@@ -58,8 +58,17 @@ def analyze(data: SigMFWindow, ui) -> None:
         marker={"color": COLORS[0], "size": 6, "opacity": 0.55},
         showlegend=False,
     ))
-    constellation.update_xaxes(title_text="In-phase", scaleanchor="y", scaleratio=1)
-    constellation.update_yaxes(title_text="Quadrature")
+    # The generated recording's symbol centers stay within about +/-0.66.
+    # Fixed symmetric limits leave a small margin without making the clusters
+    # look artificially compressed as the selected window moves.
+    constellation.update_xaxes(
+        title_text="In-phase",
+        range=[-0.75, 0.75],
+        autorange=False,
+        scaleanchor="y",
+        scaleratio=1,
+    )
+    constellation.update_yaxes(title_text="Quadrature", range=[-0.75, 0.75], autorange=False)
 
     eye_length = 2 * samples_per_symbol
     eye_count = min(160, max(0, aligned.size // samples_per_symbol - 1))
@@ -85,8 +94,11 @@ def analyze(data: SigMFWindow, ui) -> None:
             mode="lines",
             line={"color": COLORS[1], "width": 1},
         ))
-    eye.update_xaxes(title_text="Symbol periods")
-    eye.update_yaxes(title_text="Amplitude")
+    # Keep the eye geometry stable while the framework slides the selected
+    # window through the recording. These limits are a presentation choice for
+    # this normalized QPSK example, not part of windowed delivery.
+    eye.update_xaxes(title_text="Symbol periods", range=[0, 2], autorange=False)
+    eye.update_yaxes(title_text="Amplitude", range=[-1, 1], autorange=False)
 
     with ui.tab("Constellation"):
         ui.plot(style_figure(constellation, ui, "QPSK constellation"), key="constellation")

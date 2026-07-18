@@ -56,6 +56,12 @@ class MinimalExampleTests(unittest.TestCase):
             ["constellation", "eye"],
             [view["name"] for view in page["rendered_views"]],
         )
+        constellation = page["rendered_views"][0]["value"]
+        self.assertEqual([-0.75, 0.75], constellation["layout"]["xaxis"]["range"])
+        self.assertEqual([-0.75, 0.75], constellation["layout"]["yaxis"]["range"])
+        eye = page["rendered_views"][1]["value"]
+        self.assertEqual([0, 2], eye["layout"]["xaxis"]["range"])
+        self.assertEqual([-1, 1], eye["layout"]["yaxis"]["range"])
 
     def test_multi_tone_uses_one_plotly_figure_for_psd_and_waterfall(self):
         app = create_app(config_path=ROOT / "browser.toml")

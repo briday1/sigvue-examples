@@ -1,5 +1,6 @@
 [browser]
 title = "Scientific Workspace Browser Examples"
+subtitle = "Explore scientific and analytical results"
 
 [[workspaces]]
 use = "qpsk-windowed"
