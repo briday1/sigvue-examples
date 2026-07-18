@@ -9,8 +9,9 @@ from pathlib import Path
 import numpy as np
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource
+from sigvue.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource
 
+from .capabilities import SigMFAnnotator, SigMFExporter
 from .sigmf import SigMFRecording, load_metadata, load_recording
 from .style import COLORS, style_figure
 
@@ -47,6 +48,7 @@ class WindowedCommsDelivery(DataDelivery[SigMFRecording, CommsWindow]):
             step=min(0.005, recording.duration_seconds),
             overview=overview,
             overview_label="Received power",
+            time_unit="ms",
         )
         start = round(start_seconds * recording.sample_rate)
         count = max(1, round((end_seconds - start_seconds) * recording.sample_rate))
@@ -159,6 +161,8 @@ def create_workspace(config=None):
             describe=_describe_recording,
         ),
         delivery=WindowedCommsDelivery(),
+        annotator=SigMFAnnotator(),
+        exporter=SigMFExporter(),
         analyze=analyze,
         category="digital communications",
         tags=("windowed", "qpsk", "16-qam", "constellation", "eye diagram"),

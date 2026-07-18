@@ -6,13 +6,17 @@ import json
 from math import ceil, log10, pi, sqrt
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from scipy.io import savemat
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource, PlaybackMode, TraceStyle
+from sigvue.plugin import Annotation, AnnotationRequest, AnalysisContext, AnalysisWorkspace, DataAnnotator, DataDelivery, DataExporter, DataResource, DirectorySource, ExportRequest, PlaybackMode, TraceStyle
 
+from .capabilities import FORMATS, SCOPES, add_sigmf_annotation, read_sigmf_annotations, waterfall_annotation_fields
+from .sigmf import load_recording
 from .style import ORANGE, TEAL, hsv_channel_colors, style_plotly
 
 
@@ -22,6 +26,12 @@ COLORMAPS = ("Viridis", "Cividis", "Plasma", "Inferno", "Magma", "Turbo", "Blues
 TIME_WATERFALL_LIMITS_DBM = (-100.0, -10.0)
 PSD_WATERFALL_LIMITS_DBM_HZ = (-180.0, -80.0)
 CHANNEL_COLORS = hsv_channel_colors(4)
+
+
+def _rgba(color: str, alpha: float) -> str:
+    value = color.lstrip("#")
+    red, green, blue = (int(value[index : index + 2], 16) for index in (0, 2, 4))
+    return f"rgba({red},{green},{blue},{alpha:g})"
 
 
 @dataclass(frozen=True)
@@ -41,6 +51,7 @@ class LfmCollection:
     members: dict[str, tuple[CollectionMember, ...]]
     ota_prf_hz: float = 1_000.0
     ota_pulse_width_seconds: float = 50e-6
+    collection_path: Path | None = None
 
     def sample_count(self, role: str) -> int:
         return min(member.data_path.stat().st_size // 4 for member in self.members[role])
@@ -68,6 +79,127 @@ class LfmInput:
     calibration_counts: np.ndarray
     noise_counts: np.ndarray
     ota_counts: np.ndarray
+    annotations: tuple[Annotation, ...] = ()
+
+
+class LfmAnnotator(DataAnnotator[LfmCollection, LfmInput]):
+    """Store matching standard SigMF annotations on all four OTA members."""
+
+    timeline_color_control = "lfm_annotation_region_color"
+
+    @property
+    def fields(self):
+        return waterfall_annotation_fields(
+            "waterfall-domain-1",
+            time_scale=1.0,
+            frequency_scale=1.0,
+            time_offset_source="playback",
+        )
+
+    def discover(self, collection: LfmCollection):
+        return read_sigmf_annotations(load_recording(collection.members["ota"][0].metadata_path))
+
+    def annotate(self, collection: LfmCollection, delivered: LfmInput, request: AnnotationRequest) -> Annotation:
+        try:
+            start_seconds = float(request.values["start_seconds"])
+            stop_seconds = float(request.values["stop_seconds"])
+            frequency_lower_hz = float(request.values["frequency_lower_hz"])
+            frequency_upper_hz = float(request.values["frequency_upper_hz"])
+        except (KeyError, ValueError) as error:
+            raise ValueError("Waterfall annotation bounds must be numeric") from error
+        if start_seconds < 0 or stop_seconds <= start_seconds:
+            raise ValueError("Annotation stop time must be after its non-negative start time")
+        available = collection.sample_count("ota")
+        start_sample = min(available, round(start_seconds * collection.sample_rate))
+        stop_sample = min(available, round(stop_seconds * collection.sample_rate))
+        if stop_sample <= start_sample:
+            raise ValueError("Annotation time bounds do not contain any recording samples")
+        identifier = str(uuid4())
+        result = None
+        for member in collection.members["ota"]:
+            result = add_sigmf_annotation(
+                load_recording(member.metadata_path),
+                start_sample,
+                stop_sample - start_sample,
+                request,
+                identifier=identifier,
+                frequency_lower_hz=frequency_lower_hz,
+                frequency_upper_hz=frequency_upper_hz,
+            )
+        assert result is not None
+        return result
+
+
+class LfmExporter(DataExporter[LfmCollection, LfmInput]):
+    """Serialize either the delivered OTA window or every collection member."""
+
+    @property
+    def scopes(self):
+        return SCOPES
+
+    @property
+    def formats(self):
+        return FORMATS
+
+    def export(self, collection: LfmCollection, delivered: LfmInput, request: ExportRequest, directory: Path) -> Path:
+        stem = collection.collection_path.stem if collection.collection_path else "lfm-collection"
+        if request.scope == "buffer":
+            start = delivered.start_sample
+            arrays = {
+                "calibration": delivered.calibration_counts,
+                "terminated_noise": delivered.noise_counts,
+                "ota": delivered.ota_counts,
+            }
+        else:
+            start = 0
+            arrays = {role.replace("-", "_"): collection.read(role) for role in collection.members}
+        ota_count = arrays["ota"].shape[-1]
+        target = directory / (
+            f"{stem}-t{start / collection.sample_rate:.9f}s-"
+            f"{ota_count / collection.sample_rate:.9f}s-{request.scope}.{request.format}"
+        )
+        metadata = {
+            "sample_rate": collection.sample_rate,
+            "start_sample": start,
+            "scope": request.scope,
+            "calibration_dbm": collection.calibration_dbm,
+            "adc_bits": collection.adc_bits,
+            "ota_prf_hz": collection.ota_prf_hz,
+            "control_values": dict(request.control_values),
+        }
+        if request.format == "mat":
+            mat_metadata = {**metadata, "control_values": json.dumps(metadata["control_values"], default=str)}
+            savemat(target, {**mat_metadata, **arrays})
+            return target
+        if request.format != "json":
+            raise ValueError(f"Unsupported LFM export format: {request.format}")
+        with target.open("w", encoding="utf-8") as stream:
+            stream.write(json.dumps(metadata)[:-1])
+            stream.write(', "samples": {')
+            for index, (role, samples) in enumerate(arrays.items()):
+                if index:
+                    stream.write(",")
+                stream.write(f'{json.dumps(role)}: {{"real": ')
+                _write_numeric_matrix(stream, samples.real)
+                stream.write(', "imag": ')
+                _write_numeric_matrix(stream, samples.imag)
+                stream.write("}")
+            stream.write("}}")
+        return target
+
+
+def _write_numeric_matrix(stream: Any, values: np.ndarray, chunk_size: int = 16_384) -> None:
+    stream.write("[")
+    for channel_index, channel in enumerate(values):
+        if channel_index:
+            stream.write(",")
+        stream.write("[")
+        for start in range(0, channel.size, chunk_size):
+            if start:
+                stream.write(",")
+            stream.write(",".join(format(float(value), ".9g") for value in channel[start : start + chunk_size]))
+        stream.write("]")
+    stream.write("]")
 
 
 class BufferedDelivery(DataDelivery[LfmCollection, LfmInput]):
@@ -130,6 +262,8 @@ class WholeFileDelivery(DataDelivery[LfmCollection, LfmInput]):
 def _input(collection: LfmCollection, *, start: int, count: int, pri: int, ui: AnalysisContext) -> LfmInput:
     calibration = ui.once("lfm-calibration-counts", lambda: collection.read("calibration"))
     noise = ui.once("lfm-noise-counts", lambda: collection.read("terminated-noise"))
+    annotation_path = collection.members["ota"][0].metadata_path
+    current_annotations = read_sigmf_annotations(load_recording(annotation_path)) if annotation_path.is_file() else ()
     return LfmInput(
         sample_rate=collection.sample_rate,
         calibration_dbm=collection.calibration_dbm,
@@ -139,6 +273,7 @@ def _input(collection: LfmCollection, *, start: int, count: int, pri: int, ui: A
         calibration_counts=calibration,
         noise_counts=noise,
         ota_counts=collection.read("ota", start, count),
+        annotations=current_annotations,
     )
 
 
@@ -164,6 +299,8 @@ def create_lfm_workspace(
             recursive=True,
         ),
         delivery=delivery,
+        annotator=LfmAnnotator(),
+        exporter=LfmExporter(),
         analyze=analyze_lfm,
         category="signal analysis",
         tags=tags,
@@ -228,6 +365,7 @@ def read_collection(path: Path) -> LfmCollection:
         members,
         float(collection_metadata.get("ota_prf_hz", 1_000.0)),
         float(collection_metadata.get("ota_pulse_width_seconds", 50e-6)),
+        path,
     )
 
 
@@ -279,6 +417,17 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
         "noise": ui.trace_style("noise_trace", label="Noise reference", color="#8f9fa6", width=1.0, line_style="dot"),
         "full_scale": ui.trace_style("full_scale_trace", label="Full scale", color="#60717d", width=1.0, line_style="dash"),
     }
+    show_annotations = ui.toggle(
+        "lfm_show_annotations", default=True, label="Show annotations", group="Annotation display"
+    )
+    annotation_style = ui.trace_style(
+        "lfm_annotation_region",
+        label="Annotation boxes",
+        color="#ffffff",
+        width=0.5,
+        line_style="solid",
+        group="Annotation display",
+    )
     ota = _apply_calibration(data.ota_counts, calibration)
     calibrated_tone = _apply_calibration(data.calibration_counts, calibration)
     calibrated_noise = data.noise_counts * calibration.volts_per_count[:, None]
@@ -342,6 +491,10 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
                     ui.theme,
                     waterfall_colormap,
                     time_waterfall_limits,
+                    annotations=data.annotations,
+                    window_start_seconds=data.start_sample / data.sample_rate,
+                    annotation_style=annotation_style,
+                    show_annotations=show_annotations,
                 ),
                 "Frequency PSD": _waterfall_figure(
                     products,
@@ -349,6 +502,10 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
                     ui.theme,
                     waterfall_colormap,
                     psd_waterfall_limits,
+                    annotations=data.annotations,
+                    window_start_seconds=data.start_sample / data.sample_rate,
+                    annotation_style=annotation_style,
+                    show_annotations=show_annotations,
                 ),
             },
             key="waterfall-domain",
@@ -725,6 +882,11 @@ def _waterfall_figure(
     theme: str,
     colormap: str,
     zlimits: tuple[float, float],
+    *,
+    annotations: tuple[Annotation, ...] = (),
+    window_start_seconds: float = 0.0,
+    annotation_style: TraceStyle | None = None,
+    show_annotations: bool = True,
 ) -> go.Figure:
     figure = make_subplots(
         rows=2,
@@ -752,7 +914,104 @@ def _waterfall_figure(
             row=channel // 2 + 1,
             col=channel % 2 + 1,
         )
-    figure.update_yaxes(title_text="Relative slow time (s)", col=1)
+    displayed_slow_times = np.sort(np.asarray(products.slow_time_s, dtype=float))
+    if displayed_slow_times.size > 1:
+        slow_time_bin = float(np.median(np.diff(displayed_slow_times)))
+        slow_time_start = max(0.0, float(displayed_slow_times[0]) - slow_time_bin / 2)
+        slow_time_stop = float(displayed_slow_times[-1]) + slow_time_bin / 2
+    else:
+        slow_time_start = 0.0
+        slow_time_stop = max(float(displayed_slow_times[0]) * 2, 1e-12)
+    if domain == "frequency" and show_annotations and annotation_style is not None and products.frequencies_hz.size:
+        view_lower_hz = float(np.min(products.frequencies_hz))
+        view_upper_hz = float(np.max(products.frequencies_hz))
+        view_stop_seconds = window_start_seconds + slow_time_stop
+        displayed_slow_time_start = slow_time_start
+        displayed_slow_time_stop = slow_time_stop
+        if displayed_slow_times.size > 1:
+            displayed_slow_time_bin = float(np.median(np.diff(displayed_slow_times)))
+        else:
+            displayed_slow_time_bin = max(view_stop_seconds - window_start_seconds, 1e-12)
+        polygon_x: list[float | None] = []
+        polygon_y: list[float | None] = []
+        hover_x: list[float] = []
+        hover_y: list[float] = []
+        hover_text: list[str] = []
+        for annotation in annotations:
+            annotation_stop = (
+                view_stop_seconds
+                if annotation.duration_seconds is None
+                else annotation.start_seconds + annotation.duration_seconds
+            )
+            lower_hz = annotation.frequency_lower_hz if annotation.frequency_lower_hz is not None else view_lower_hz
+            upper_hz = annotation.frequency_upper_hz if annotation.frequency_upper_hz is not None else view_upper_hz
+            if annotation_stop < window_start_seconds or annotation.start_seconds > view_stop_seconds:
+                continue
+            if upper_hz < view_lower_hz or lower_hz > view_upper_hz:
+                continue
+            x0, x1 = max(view_lower_hz, lower_hz), min(view_upper_hz, upper_hz)
+            exact_y0 = max(window_start_seconds, annotation.start_seconds) - window_start_seconds
+            exact_y1 = min(view_stop_seconds, annotation_stop) - window_start_seconds
+            center = (exact_y0 + exact_y1) / 2
+            nearest_slow_time = float(
+                displayed_slow_times[np.argmin(np.abs(displayed_slow_times - center))]
+            )
+            y0 = max(
+                displayed_slow_time_start,
+                min(exact_y0, nearest_slow_time - displayed_slow_time_bin / 2),
+            )
+            y1 = min(
+                displayed_slow_time_stop,
+                max(exact_y1, nearest_slow_time + displayed_slow_time_bin / 2),
+            )
+            description = annotation.comment or annotation.label or "Annotation"
+            hover = (
+                f"{description}<br>Time: {annotation.start_seconds:.9g}–{annotation_stop:.9g} s"
+                f"<br>Frequency: {lower_hz:.12g}–{upper_hz:.12g} Hz"
+            )
+            polygon_x.extend((x0, x1, x1, x0, x0, None))
+            polygon_y.extend((y0, y0, y1, y1, y0, None))
+            hover_x.extend((x0, (x0 + x1) / 2, x1))
+            hover_y.extend(((y0 + y1) / 2,) * 3)
+            hover_text.extend((hover,) * 3)
+        if polygon_x:
+            for channel in range(4):
+                row, col = channel // 2 + 1, channel % 2 + 1
+                figure.add_trace(
+                    go.Scatter(
+                        x=polygon_x,
+                        y=polygon_y,
+                        mode="lines",
+                        line=annotation_style.line,
+                        fill="toself",
+                        fillcolor=_rgba(annotation_style.color, 0.12),
+                        hoverinfo="skip",
+                        showlegend=False,
+                    ),
+                    row=row,
+                    col=col,
+                )
+                figure.add_trace(
+                    go.Scatter(
+                        x=hover_x,
+                        y=hover_y,
+                        mode="markers",
+                        marker={"color": annotation_style.color, "opacity": 0.01, "size": 12},
+                        text=hover_text,
+                        hovertemplate="%{text}<extra></extra>",
+                        name="",
+                        showlegend=False,
+                    ),
+                    row=row,
+                    col=col,
+                )
+    figure.update_yaxes(
+        title_text="Relative slow time (s)",
+        range=[slow_time_start, slow_time_stop],
+        autorange=False,
+        col=1,
+    )
+    figure.update_yaxes(range=[slow_time_start, slow_time_stop], autorange=False, col=2)
     figure.update_xaxes(title_text="Fast time (us)" if domain == "time" else "Frequency (Hz)", row=2)
     return style_plotly(
         figure,

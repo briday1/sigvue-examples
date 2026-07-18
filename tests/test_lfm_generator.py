@@ -17,7 +17,7 @@ from scripts.generate_lfm_collection import (
     noise_component_std,
     write_member,
 )
-from scientific_workspace_examples.radar_collection import _averaged_psd, _single_psd
+from sigvue_examples.radar_collection import _averaged_psd, _single_psd
 
 
 class LfmGeneratorTests(unittest.TestCase):

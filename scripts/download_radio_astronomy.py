@@ -22,7 +22,7 @@ TLS_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 
 def record_files() -> list[dict[str, object]]:
-    request = Request(RECORD_API, headers={"User-Agent": "Scientific-Workspace-Browser-Examples/0.1"})
+    request = Request(RECORD_API, headers={"User-Agent": "Sigvue-Examples/0.1"})
     with urlopen(request, context=TLS_CONTEXT) as response:
         payload = json.load(response)
     return sorted((item for item in payload["files"] if str(item["key"]).endswith(".sigmf")), key=lambda item: item["key"])
@@ -42,7 +42,7 @@ def download(file: dict[str, object], destination: Path) -> None:
         print(f"Using verified {destination.name}")
         return
     temporary = destination.with_suffix(destination.suffix + ".part")
-    request = Request(str(file["links"]["self"]), headers={"User-Agent": "Scientific-Workspace-Browser-Examples/0.1"})
+    request = Request(str(file["links"]["self"]), headers={"User-Agent": "Sigvue-Examples/0.1"})
     size = int(file["size"])
     received = 0
     with urlopen(request, context=TLS_CONTEXT) as response, temporary.open("wb") as output:

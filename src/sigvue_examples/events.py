@@ -9,7 +9,7 @@ from pathlib import Path
 
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource, Segment
+from sigvue.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource, Segment
 
 from .style import COLORS, style_figure
 

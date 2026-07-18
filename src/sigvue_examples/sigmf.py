@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from threading import RLock
 
 import numpy as np
+
+
+_metadata_lock = RLock()
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,24 @@ class SigMFRecording:
 def load_metadata(metadata_path: Path) -> dict[str, object]:
     """Read a SigMF metadata document without applying workspace semantics."""
     return json.loads(metadata_path.read_text(encoding="utf-8"))
+
+
+def annotations(metadata_path: Path) -> tuple[dict[str, object], ...]:
+    """Return current on-disk SigMF annotations without caching workspace state."""
+    return tuple(load_metadata(metadata_path).get("annotations", ()))
+
+
+def append_annotation(metadata_path: Path, annotation: dict[str, object]) -> None:
+    """Atomically append and sample-sort one standard SigMF annotation object."""
+    with _metadata_lock:
+        metadata = load_metadata(metadata_path)
+        entries = list(metadata.get("annotations", ()))
+        entries.append(dict(annotation))
+        entries.sort(key=lambda entry: int(entry["core:sample_start"]))
+        metadata["annotations"] = entries
+        temporary = metadata_path.with_name(f".{metadata_path.name}.tmp")
+        temporary.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(metadata_path)
 
 
 def load_recording(metadata_path: Path) -> SigMFRecording:

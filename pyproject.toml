@@ -3,19 +3,19 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "scientific-workspace-browser-examples"
+name = "sigvue-examples"
 version = "0.1.0"
-description = "File-backed SigMF examples for Scientific Workspace Browser"
+description = "File-backed SigMF examples for Sigvue"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["certifi>=2024.2.2", "numpy>=1.24", "plotly>=6.1.1", "workspace-browser>=0.1.0"]
+dependencies = ["certifi>=2024.2.2", "numpy>=1.24", "plotly>=6.1.1", "scipy>=1.10", "sigvue>=0.1.0"]
 
-[project.entry-points."workspace_browser.workspaces"]
-digital-comms = "scientific_workspace_examples.comms:create_workspace"
-acoustic-events-segmented = "scientific_workspace_examples.events:create_workspace"
-radio-astronomy-rfi = "scientific_workspace_examples.waterfall:create_radio_astronomy_workspace"
-lte-recording = "scientific_workspace_examples.waterfall:create_lte_workspace"
-lfm-live = "scientific_workspace_examples.radar_collection:create_workspace"
+[project.entry-points."sigvue.workspaces"]
+digital-comms = "sigvue_examples.comms:create_workspace"
+acoustic-events-segmented = "sigvue_examples.events:create_workspace"
+radio-astronomy-rfi = "sigvue_examples.waterfall:create_radio_astronomy_workspace"
+lte-recording = "sigvue_examples.waterfall:create_lte_workspace"
+lfm-live = "sigvue_examples.radar_collection:create_workspace"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

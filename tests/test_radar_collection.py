@@ -1,17 +1,19 @@
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from workspace_browser.core.plugin import AnalysisContext
-from workspace_browser.rendering.dispatch import RenderKind, detect_render_kind
-from scientific_workspace_examples.radar_collection import (
+from sigvue.plugin import AnalysisContext, ExportRequest
+from sigvue.rendering.dispatch import RenderKind, detect_render_kind
+from sigvue_examples.radar_collection import (
     BufferedDelivery,
     CHANNEL_COLORS,
     COLORMAPS,
     CollectionMember,
     LfmCollection,
+    LfmExporter,
     LfmInput,
     WholeFileDelivery,
     _calibrate,
@@ -28,6 +30,10 @@ class RadarCollectionTests(unittest.TestCase):
         self.assertIs(analyze_lfm, live.analyze)
         self.assertIsInstance(live.delivery, BufferedDelivery)
         self.assertIn("10-mhz", live.metadata.tags)
+        annotation_fields = {field.name: field for field in live.annotator.fields}
+        self.assertEqual("lfm_annotation_region_color", live.annotator.timeline_color_control)
+        self.assertEqual("waterfall-domain-1", annotation_fields["frequency_lower_hz"].plot_binding.view)
+        self.assertEqual("playback", annotation_fields["start_seconds"].plot_binding.offset_source)
         self.assertIn("2-mhz", live.metadata.tags)
         self.assertIn("multi-target", live.metadata.tags)
 
@@ -58,6 +64,25 @@ class RadarCollectionTests(unittest.TestCase):
             ui = AnalysisContext({"buffer_seconds": "0.1", "processing_prf_hz": "100"})
             BufferedDelivery(playback_mode="seek").prepare(collection, ui)
             self.assertEqual("seek", ui.playback_config.mode)
+
+    def test_lfm_exporter_includes_calibration_noise_and_ota_data(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            collection = self._collection(root, sample_count=100)
+            delivered = BufferedDelivery().prepare(
+                collection,
+                AnalysisContext({"buffer_seconds": "0.02", "processing_prf_hz": "100"}),
+            )
+            target = LfmExporter().export(
+                collection,
+                delivered,
+                ExportRequest("buffer", "json", {"processing_prf_hz": 100}),
+                root,
+            )
+            payload = json.loads(target.read_text())
+            self.assertEqual({"calibration", "terminated_noise", "ota"}, set(payload["samples"]))
+            self.assertEqual(20, len(payload["samples"]["ota"]["real"][0]))
+            self.assertEqual(100, payload["control_values"]["processing_prf_hz"])
 
     def test_live_tail_rechecks_common_file_growth_and_preserves_historical_seek(self):
         with TemporaryDirectory() as directory:

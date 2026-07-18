@@ -1,6 +1,6 @@
-# Scientific Workspace Browser Examples
+# Sigvue Examples
 
-External, file-backed examples for [Scientific Workspace Browser](https://github.com/briday1/Scientific-Workspace-Browser). This repository deliberately keeps the small examples independent from the browser framework.
+External, file-backed examples for [Sigvue](https://github.com/briday1/sigvue). This repository deliberately keeps the small examples independent from the browser framework.
 
 The package is organized by analysis domain: `waterfall.py` contains the LTE
 and radio-astronomy spectrum/waterfall workflows, `comms.py` contains QPSK and
@@ -19,6 +19,15 @@ example, `DataDelivery[SigMFRecording, WaterfallWindow]`. The first type is what
 the source opens, the second is exactly what the analysis function receives.
 This makes the source/delivery/analysis boundary visible without putting browser
 semantics into the shared SigMF I/O module.
+
+`capabilities.py` is the explicit bridge from that neutral I/O to Sigvue's
+optional annotation and export contracts. These workspaces write standard
+SigMF sample start/count, comment, generator, and UUID annotation fields. Waterfall
+workspaces also read and write standard lower/upper RF-frequency edges, populate editable
+bounds from the visible Plotly axes, and show in-view annotations as hoverable regions.
+They also let the plugin serialize the current buffer or full recording as JSON
+or MAT. If a workspace does not pass either capability, Sigvue shows neither
+menu.
 
 ## Examples
 
@@ -76,9 +85,9 @@ redistributing or publishing results derived from it.
 Install the browser framework and this repository in one environment, then launch the included profile:
 
 ```bash
-python -m pip install -e ../Scientific-Workspace-Browser
+python -m pip install -e ../sigvue
 python -m pip install -e .
-workspace-browser --config browser.toml
+sigvue --config browser.toml
 ```
 
 During development, installation of this repository is optional because `browser.toml` points directly at its root. The browser watches the repository and reloads changed workspace code when the page is refreshed.
@@ -86,5 +95,5 @@ During development, installation of this repository is optional because `browser
 ## Test
 
 ```bash
-PYTHONPATH=src:../Scientific-Workspace-Browser/src python -m unittest discover -s tests -q
+PYTHONPATH=src:../sigvue/src python -m unittest discover -s tests -q
 ```

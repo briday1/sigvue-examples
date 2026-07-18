@@ -10,8 +10,9 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource
+from sigvue.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource, TraceStyle
 
+from .capabilities import SigMFExporter, WaterfallSigMFAnnotator, read_sigmf_annotations
 from .sigmf import SigMFRecording, load_metadata, load_recording
 from .style import style_figure
 
@@ -22,6 +23,12 @@ FFT_WINDOWS = ("Hann", "Hamming", "Blackman", "Rectangular")
 OVERLAPS = (0, 25, 50, 75, 88)
 DBFS_MIN = -90.0
 DBFS_MAX = -20.0
+
+
+def _rgba(color: str, alpha: float) -> str:
+    value = color.lstrip("#")
+    red, green, blue = (int(value[index : index + 2], 16) for index in (0, 2, 4))
+    return f"rgba({red},{green},{blue},{alpha:g})"
 
 
 @dataclass(frozen=True)
@@ -35,6 +42,108 @@ class WaterfallWindow:
     @property
     def sample_rate(self) -> float:
         return self.recording.sample_rate
+
+
+def _add_sigmf_annotation_regions(
+    figure: go.Figure,
+    data: WaterfallWindow,
+    frequency_mhz: np.ndarray,
+    waterfall_time_ms: np.ndarray,
+    annotation_style: TraceStyle,
+    show_annotations: bool,
+    *,
+    row: int,
+    col: int,
+) -> None:
+    """Draw visible standard SigMF annotation bounds with hover-only descriptions."""
+    if not show_annotations or frequency_mhz.size == 0:
+        return
+    view_start = data.start_sample / data.sample_rate
+    view_stop = (data.start_sample + data.samples.shape[-1]) / data.sample_rate
+    view_lower_hz = float(np.min(frequency_mhz)) * 1e6
+    view_upper_hz = float(np.max(frequency_mhz)) * 1e6
+    displayed_times = np.sort(np.asarray(waterfall_time_ms, dtype=float))
+    displayed_time_start_ms = view_start * 1e3
+    displayed_time_stop_ms = view_stop * 1e3
+    if displayed_times.size > 1:
+        displayed_time_bin_ms = float(np.median(np.diff(displayed_times)))
+    else:
+        displayed_time_bin_ms = max((view_stop - view_start) * 1e3, 1e-9)
+    polygon_x: list[float | None] = []
+    polygon_y: list[float | None] = []
+    hover_x: list[float] = []
+    hover_y: list[float] = []
+    hover_text: list[str] = []
+    for annotation in read_sigmf_annotations(data.recording):
+        annotation_stop = (
+            data.recording.duration_seconds
+            if annotation.duration_seconds is None
+            else annotation.start_seconds + annotation.duration_seconds
+        )
+        lower_hz = annotation.frequency_lower_hz if annotation.frequency_lower_hz is not None else view_lower_hz
+        upper_hz = annotation.frequency_upper_hz if annotation.frequency_upper_hz is not None else view_upper_hz
+        if annotation_stop < view_start or annotation.start_seconds > view_stop:
+            continue
+        if upper_hz < view_lower_hz or lower_hz > view_upper_hz:
+            continue
+        start_seconds = max(view_start, annotation.start_seconds)
+        stop_seconds = min(view_stop, annotation_stop)
+        visible_lower_hz = max(view_lower_hz, lower_hz)
+        visible_upper_hz = min(view_upper_hz, upper_hz)
+        description = annotation.comment or annotation.label or "Annotation"
+        hover = (
+            f"{description}<br>Time: {annotation.start_seconds:.9g}–{annotation_stop:.9g} s"
+            f"<br>Frequency: {lower_hz:.12g}–{upper_hz:.12g} Hz"
+        )
+        exact_start_ms = start_seconds * 1e3
+        exact_stop_ms = stop_seconds * 1e3
+        annotation_center_ms = (exact_start_ms + exact_stop_ms) / 2
+        nearest_time_ms = float(displayed_times[np.argmin(np.abs(displayed_times - annotation_center_ms))])
+        visual_start_ms = max(
+            displayed_time_start_ms,
+            min(exact_start_ms, nearest_time_ms - displayed_time_bin_ms / 2),
+        )
+        visual_stop_ms = min(
+            displayed_time_stop_ms,
+            max(exact_stop_ms, nearest_time_ms + displayed_time_bin_ms / 2),
+        )
+        x = [visible_lower_hz / 1e6, visible_upper_hz / 1e6] * 2
+        x = [x[0], x[1], x[1], x[0], x[0]]
+        y = [visual_start_ms, visual_start_ms, visual_stop_ms, visual_stop_ms, visual_start_ms]
+        polygon_x.extend((*x, None))
+        polygon_y.extend((*y, None))
+        hover_x.extend((x[0], (x[0] + x[1]) / 2, x[1]))
+        hover_y.extend(((y[0] + y[2]) / 2,) * 3)
+        hover_text.extend((hover,) * 3)
+    if polygon_x:
+        figure.add_trace(
+            go.Scatter(
+                x=polygon_x,
+                y=polygon_y,
+                mode="lines",
+                line=annotation_style.line,
+                fill="toself",
+                fillcolor=_rgba(annotation_style.color, 0.12),
+                hoverinfo="skip",
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
+        )
+        figure.add_trace(
+            go.Scatter(
+                x=hover_x,
+                y=hover_y,
+                mode="markers",
+                marker={"color": annotation_style.color, "opacity": 0.01, "size": 12},
+                text=hover_text,
+                hovertemplate="%{text}<extra></extra>",
+                name="",
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
+        )
 
 
 def _describe_recording(metadata_path: Path) -> DataResource:
@@ -77,6 +186,7 @@ class WindowedLteDelivery(DataDelivery[SigMFRecording, WaterfallWindow]):
             step=min(0.001, recording.duration_seconds),
             overview=overview,
             overview_label="Sliding median power (dBFS)",
+            time_unit="ms",
         )
         start = round(start_seconds * recording.sample_rate)
         count = max(1, round((end_seconds - start_seconds) * recording.sample_rate))
@@ -99,6 +209,17 @@ def _median_power_overview(recording: SigMFRecording) -> np.ndarray:
 
 
 def analyze_lte(data: WaterfallWindow, ui: AnalysisContext) -> None:
+    show_annotations = ui.toggle(
+        "lte_show_annotations", default=True, label="Show annotations", group="Annotation display"
+    )
+    annotation_style = ui.trace_style(
+        "lte_annotation_region",
+        label="Annotation boxes",
+        color="#ffffff",
+        width=0.5,
+        line_style="solid",
+        group="Annotation display",
+    )
     colormap = ui.colormap(
         "lte_colormap",
         label="Colormap",
@@ -202,9 +323,28 @@ def analyze_lte(data: WaterfallWindow, ui: AnalysisContext) -> None:
         row=1,
         col=1,
     )
-    figure.update_yaxes(title_text="Recording time (ms)", tickformat="07.2f", row=2, col=1)
+    figure.update_yaxes(
+        title_text="Recording time (ms)",
+        tickformat="07.2f",
+        range=[data.start_sample / data.sample_rate * 1e3, (data.start_sample + samples.size) / data.sample_rate * 1e3],
+        autorange=False,
+        row=2,
+        col=1,
+    )
     figure.update_xaxes(title_text="RF frequency (MHz)", tickformat="07.2f", row=2, col=1)
-    figure.update_layout(uirevision=f"lte-spectrum:{data.recording.metadata_path.name}")
+    figure.update_layout(
+        uirevision=f"lte-spectrum:{data.recording.metadata_path.name}:annotations-{show_annotations}"
+    )
+    _add_sigmf_annotation_regions(
+        figure,
+        data,
+        frequency_mhz,
+        time_ms,
+        annotation_style,
+        show_annotations,
+        row=2,
+        col=1,
+    )
 
     ui.stat("Center frequency", f"{center_hz / 1e6:g} MHz")
     ui.stat("Sample rate", f"{data.sample_rate / 1e6:g} MS/s")
@@ -223,6 +363,8 @@ def create_lte_workspace(config=None):
         description="Windowed mode: drag or resize an interval over sliding-median power and inspect its LTE time-frequency plot.",
         source=_recording_source(root, filename, recursive=True),
         delivery=WindowedLteDelivery(),
+        annotator=WaterfallSigMFAnnotator("lte-spectrum", "lte_annotation_region_color"),
+        exporter=SigMFExporter(),
         analyze=analyze_lte,
         category="spectrum monitoring",
         tags=("windowed", "single-channel", "LTE", "spectrogram", "waterfall"),
@@ -244,6 +386,7 @@ class WindowedRfiDelivery(DataDelivery[SigMFRecording, WaterfallWindow]):
             step=min(0.002, recording.duration_seconds),
             overview=overview,
             overview_label="Sampled wideband power (dBFS)",
+            time_unit="auto",
         )
         start = round(start_seconds * recording.sample_rate)
         count = max(1, round((end_seconds - start_seconds) * recording.sample_rate))
@@ -285,6 +428,17 @@ def _rfi_spectrogram(
 
 
 def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
+    show_annotations = ui.toggle(
+        "rfi_show_annotations", default=True, label="Show annotations", group="Annotation display"
+    )
+    annotation_style = ui.trace_style(
+        "rfi_annotation_region",
+        label="Annotation boxes",
+        color="#ffffff",
+        width=0.5,
+        line_style="solid",
+        group="Annotation display",
+    )
     colormap = ui.colormap(
         "rfi_colormap",
         label="Colormap",
@@ -325,7 +479,10 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
     captures = data.recording.metadata.get("captures", [{}])
     center_hz = float(captures[0].get("core:frequency", 0.0)) if captures else 0.0
     frequency_mhz = (center_hz + frequency_offset) / 1e6
-    relative_time_ms = np.linspace(0, data.samples.shape[1] / data.sample_rate * 1e3, waterfall_dbfs.shape[0])
+    view_start_ms = data.start_sample / data.sample_rate * 1e3
+    view_stop_ms = (data.start_sample + data.samples.shape[1]) / data.sample_rate * 1e3
+    time_bin_ms = (view_stop_ms - view_start_ms) / waterfall_dbfs.shape[0]
+    recording_time_ms = view_start_ms + (np.arange(waterfall_dbfs.shape[0]) + 0.5) * time_bin_ms
 
     figure = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.3, 0.7], vertical_spacing=0.06)
     figure.add_trace(
@@ -336,7 +493,7 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
     figure.add_trace(
         go.Heatmap(
             x=frequency_mhz,
-            y=relative_time_ms,
+            y=recording_time_ms,
             z=waterfall_dbfs,
             zmin=zmin,
             zmax=zmax,
@@ -347,9 +504,27 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
         col=1,
     )
     figure.update_yaxes(title_text="Power (dBFS)", range=[zmin, zmax], row=1, col=1)
-    figure.update_yaxes(title_text="Window time (ms)", row=2, col=1)
+    figure.update_yaxes(
+        title_text="Recording time (ms)",
+        range=[view_start_ms, view_stop_ms],
+        autorange=False,
+        row=2,
+        col=1,
+    )
     figure.update_xaxes(title_text="RF frequency (MHz)", row=2, col=1)
-    figure.update_layout(uirevision=f"ata-rfi:{data.recording.metadata_path.name}")
+    figure.update_layout(
+        uirevision=f"ata-rfi:{data.recording.metadata_path.name}:annotations-{show_annotations}"
+    )
+    _add_sigmf_annotation_regions(
+        figure,
+        data,
+        frequency_mhz,
+        recording_time_ms,
+        annotation_style,
+        show_annotations,
+        row=2,
+        col=1,
+    )
 
     ui.stat("Center frequency", f"{center_hz / 1e6:g} MHz")
     ui.stat("Sample rate", f"{data.sample_rate / 1e6:g} MS/s")
@@ -367,6 +542,8 @@ def create_radio_astronomy_workspace(config=None):
         description="Windowed mode: inspect downloaded Allen Telescope Array site-survey recordings for radio-frequency interference.",
         source=_recording_source(root, "*.sigmf-meta", recursive=True),
         delivery=WindowedRfiDelivery(),
+        annotator=WaterfallSigMFAnnotator("rfi-spectrum", "rfi_annotation_region_color"),
+        exporter=SigMFExporter(),
         analyze=analyze_radio_astronomy,
         category="radio astronomy",
         tags=("windowed", "radio astronomy", "rfi", "sigmf", "real data"),

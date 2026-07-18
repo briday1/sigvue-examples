@@ -3,11 +3,11 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from workspace_browser.web.application import create_app
+from sigvue.web.application import create_app
 
-import scientific_workspace_examples.sigmf as sigmf
-import scientific_workspace_examples.style as style
-from scientific_workspace_examples.sigmf import load_recording
+import sigvue_examples.sigmf as sigmf
+import sigvue_examples.style as style
+from sigvue_examples.sigmf import load_recording
 from scripts.generate_segmented_results import EVENTS, generate as generate_segmented_results
 from scripts.generate_minimal_sigmf import qam16, qpsk, write_sigmf
 
@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class MinimalExampleTests(unittest.TestCase):
     def test_shared_modules_do_not_own_browser_contracts(self):
-        self.assertNotIn("workspace_browser", inspect.getsource(sigmf))
-        self.assertNotIn("workspace_browser", inspect.getsource(style))
+        self.assertNotIn("sigvue", inspect.getsource(sigmf))
+        self.assertNotIn("sigvue", inspect.getsource(style))
         self.assertFalse(hasattr(sigmf, "SigMFWindow"))
         self.assertFalse(hasattr(sigmf, "WindowedSigMF"))
         self.assertFalse(hasattr(sigmf, "WholeSigMF"))
@@ -68,6 +68,7 @@ class MinimalExampleTests(unittest.TestCase):
             self.assertTrue(Path(item["source_reference"]).is_file())
             page = app.open_item("digital-comms", item["id"])["page"]
             self.assertEqual("windowed", page["playback"]["mode"])
+            self.assertEqual("ms", page["playback"]["time_unit"])
             self.assertGreaterEqual(len(page["rendered_views"]), 1)
 
     def test_qpsk_window_has_received_power_overview(self):
@@ -108,11 +109,12 @@ class MinimalExampleTests(unittest.TestCase):
         item = next(item for item in items if "downlink" in item["id"])
         page = app.open_item("lte-recordings", item["id"])["page"]
         self.assertEqual("windowed", page["playback"]["mode"])
+        self.assertEqual("ms", page["playback"]["time_unit"])
         self.assertEqual("Sliding median power (dBFS)", page["playback"]["overview_label"])
         self.assertEqual(400, len(page["playback"]["overview_values"]))
         self.assertEqual(["lte-spectrum"], [view["name"] for view in page["rendered_views"]])
         figure = page["rendered_views"][0]["value"]
-        self.assertEqual(["scatter", "heatmap"], [trace["type"] for trace in figure["data"]])
+        self.assertEqual(["scatter", "heatmap"], [trace["type"] for trace in figure["data"][:2]])
         self.assertEqual("RF frequency (MHz)", figure["layout"]["xaxis2"]["title"]["text"])
         self.assertEqual("Recording time (ms)", figure["layout"]["yaxis2"]["title"]["text"])
         self.assertEqual("07.2f", figure["layout"]["xaxis2"]["tickformat"])
@@ -123,7 +125,7 @@ class MinimalExampleTests(unittest.TestCase):
         self.assertEqual(".1f", figure["data"][1]["colorbar"]["tickformat"])
         self.assertEqual("#0d0887", figure["data"][1]["colorscale"][0][1])
         self.assertEqual(
-            "lte-spectrum:LTE_downlink_806MHz_2022-04-09_30720ksps.sigmf-meta",
+            "lte-spectrum:LTE_downlink_806MHz_2022-04-09_30720ksps.sigmf-meta:annotations-True",
             figure["layout"]["uirevision"],
         )
         colormap = next(control for control in page["controls"] if control["name"] == "lte_colormap")
