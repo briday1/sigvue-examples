@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scientific-workspace-browser-examples"
+version = "0.1.0"
+description = "File-backed SigMF examples for Scientific Workspace Browser"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "plotly>=6.1.1", "workspace-browser>=0.1.0"]
+
+[project.entry-points."workspace_browser.workspaces"]
+qpsk-windowed = "scientific_workspace_examples.comms:create_workspace"
+multi-tone-seek = "scientific_workspace_examples.tones:create_workspace"
+lfm-live = "scientific_workspace_examples.profile:create_lfm_live_workspace"
+lfm-static = "scientific_workspace_examples.profile:create_lfm_static_workspace"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

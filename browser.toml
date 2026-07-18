@@ -1,0 +1,34 @@
+[browser]
+title = "Scientific Workspace Browser Examples"
+
+[[workspaces]]
+use = "qpsk-windowed"
+path = "."
+id = "qpsk-windowed"
+name = "QPSK Windowed Analysis"
+[workspaces.config]
+data_root = "./data"
+
+[[workspaces]]
+use = "multi-tone-seek"
+path = "."
+id = "multi-tone-seek"
+name = "Multi-Tone Seek"
+[workspaces.config]
+data_root = "./data"
+
+[[workspaces]]
+use = "lfm-live"
+path = "."
+id = "lfm-live"
+name = "LFM Live"
+[workspaces.config]
+data_root = "./data/lfm-collection"
+
+[[workspaces]]
+use = "lfm-static"
+path = "."
+id = "lfm-static"
+name = "LFM Static"
+[workspaces.config]
+data_root = "./data/lfm-collection"

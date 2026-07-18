@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+logs/
+
+# All example recordings are generated locally and never committed.
+data/
