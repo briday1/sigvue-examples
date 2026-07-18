@@ -5,14 +5,16 @@ External, file-backed examples for [Scientific Workspace Browser](https://github
 ## Examples
 
 - **QPSK Windowed Analysis** — drag or resize a short interval over a received-power overview; the selected data drives a constellation tab followed by an eye-diagram tab.
+- **Acoustic Event Review** — navigate irregular markers and display waveform and spectrum products already stored in a JSON results file; the workspace performs no raw-audio processing.
 - **Multi-Tone Seek** — play or seek through a time-varying tone recording; each selected buffer is shown as an average PSD above a waterfall.
 - **LFM Live** — the calibrated four-channel LFM workflow using live-tail playback with historical seeking and buffered reads.
 - **LFM Static** — the same calibrated LFM analysis receiving the complete OTA files with no playback controls.
 
-Every workspace is backed by files. The two compact recordings are committed and can be regenerated deterministically with:
+Every workspace is backed by files, but generated data is not committed. Generate the compact recordings and precomputed acoustic results with:
 
 ```bash
 python scripts/generate_minimal_sigmf.py
+python scripts/generate_segmented_results.py
 ```
 
 The LFM collection is much larger and stays local. Generate it with:

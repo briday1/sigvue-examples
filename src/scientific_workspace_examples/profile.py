@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from .comms import create_workspace as create_comms_workspace
+from .events import create_workspace as create_events_workspace
 from .lfm_live import create_workspace as _lfm_live
 from .lfm_static import create_workspace as _lfm_static
 from .tones import create_workspace as create_tones_workspace
@@ -27,6 +28,7 @@ def create_lfm_static_workspace(config=None):
 
 __all__ = [
     "create_comms_workspace",
+    "create_events_workspace",
     "create_tones_workspace",
     "create_lfm_live_workspace",
     "create_lfm_static_workspace",

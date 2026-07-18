@@ -11,6 +11,14 @@ name = "QPSK Windowed Analysis"
 data_root = "./data"
 
 [[workspaces]]
+use = "acoustic-events-segmented"
+path = "."
+id = "acoustic-events-segmented"
+name = "Acoustic Event Review"
+[workspaces.config]
+data_root = "./data"
+
+[[workspaces]]
 use = "multi-tone-seek"
 path = "."
 id = "multi-tone-seek"
