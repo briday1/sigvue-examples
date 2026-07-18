@@ -1,23 +1,45 @@
-"""Windowed QPSK constellation and eye-diagram workspace."""
+"""Windowed constellation and eye-diagram workspace for digital communications."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisWorkspace
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource
 
-from .sigmf import SigMFRecording, SigMFWindow, sigmf_source
+from .sigmf import SigMFRecording, load_metadata, load_recording
 from .style import COLORS, style_figure
 
 
-class WindowedQpskDelivery:
-    """Select a small interval over a full-record received-power summary."""
+@dataclass(frozen=True)
+class CommsWindow:
+    """The exact recording interval selected by this workspace's delivery policy."""
 
-    def prepare(self, recording: SigMFRecording, ui) -> SigMFWindow:
-        overview = ui.once("qpsk-power-overview", lambda: _power_overview(recording))
+    recording: SigMFRecording
+    start_sample: int
+    samples: np.ndarray
+
+    @property
+    def sample_rate(self) -> float:
+        return self.recording.sample_rate
+
+    @property
+    def time_seconds(self) -> np.ndarray:
+        return (self.start_sample + np.arange(self.samples.shape[1])) / self.sample_rate
+
+
+class WindowedCommsDelivery(DataDelivery[SigMFRecording, CommsWindow]):
+    """Select a short interval over a decimated received-power overview."""
+
+    def prepare(self, recording: SigMFRecording, ui: AnalysisContext) -> CommsWindow:
+        overview = ui.once(
+            f"comms-power-overview:{recording.metadata_path}",
+            lambda: _power_overview(recording),
+        )
         start_seconds, end_seconds = ui.windowed(
             duration=recording.duration_seconds,
             default_window=min(0.03, recording.duration_seconds),
@@ -28,7 +50,7 @@ class WindowedQpskDelivery:
         )
         start = round(start_seconds * recording.sample_rate)
         count = max(1, round((end_seconds - start_seconds) * recording.sample_rate))
-        return SigMFWindow(recording, start, recording.read(start, count))
+        return CommsWindow(recording, start, recording.read(start, count))
 
 
 def _power_overview(recording: SigMFRecording) -> np.ndarray:
@@ -39,9 +61,10 @@ def _power_overview(recording: SigMFRecording) -> np.ndarray:
     return 10 * np.log10(np.maximum(np.mean(np.abs(blocks) ** 2, axis=1), 1e-12))
 
 
-def analyze(data: SigMFWindow, ui) -> None:
+def analyze(data: CommsWindow, ui: AnalysisContext) -> None:
     samples = data.samples[0]
     metadata = data.recording.metadata["global"]
+    modulation = str(metadata.get("examples:modulation", "Digital modulation"))
     symbol_rate = float(metadata["examples:symbol_rate"])
     carrier_hz = float(metadata["examples:carrier_hz"])
     baseband = samples * np.exp(-1j * 2 * np.pi * carrier_hz * data.time_seconds)
@@ -58,17 +81,19 @@ def analyze(data: SigMFWindow, ui) -> None:
         marker={"color": COLORS[0], "size": 6, "opacity": 0.55},
         showlegend=False,
     ))
-    # The generated recording's symbol centers stay within about +/-0.66.
-    # Fixed symmetric limits leave a small margin without making the clusters
-    # look artificially compressed as the selected window moves.
+    constellation_limit = float(metadata.get("examples:constellation_limit", 0.8))
     constellation.update_xaxes(
         title_text="In-phase",
-        range=[-0.75, 0.75],
+        range=[-constellation_limit, constellation_limit],
         autorange=False,
         scaleanchor="y",
         scaleratio=1,
     )
-    constellation.update_yaxes(title_text="Quadrature", range=[-0.75, 0.75], autorange=False)
+    constellation.update_yaxes(
+        title_text="Quadrature",
+        range=[-constellation_limit, constellation_limit],
+        autorange=False,
+    )
 
     eye_length = 2 * samples_per_symbol
     eye_count = min(160, max(0, aligned.size // samples_per_symbol - 1))
@@ -94,28 +119,47 @@ def analyze(data: SigMFWindow, ui) -> None:
             mode="lines",
             line={"color": COLORS[1], "width": 1},
         ))
-    # Keep the eye geometry stable while the framework slides the selected
-    # window through the recording. These limits are a presentation choice for
-    # this normalized QPSK example, not part of windowed delivery.
+    eye_limit = float(metadata.get("examples:eye_limit", constellation_limit))
     eye.update_xaxes(title_text="Symbol periods", range=[0, 2], autorange=False)
-    eye.update_yaxes(title_text="Amplitude", range=[-1, 1], autorange=False)
+    eye.update_yaxes(title_text="Amplitude", range=[-eye_limit, eye_limit], autorange=False)
 
+    ui.stat("Modulation", modulation)
+    ui.stat("Symbol rate", f"{symbol_rate / 1e3:g} ksym/s")
     with ui.tab("Constellation"):
-        ui.plot(style_figure(constellation, ui, "QPSK constellation"), key="constellation")
+        ui.plot(style_figure(constellation, ui.theme, f"{modulation} constellation"), key="constellation")
     with ui.tab("Eye diagram"):
-        ui.plot(style_figure(eye, ui, "QPSK eye diagram"), key="eye")
+        ui.plot(style_figure(eye, ui.theme, f"{modulation} eye diagram"), key="eye")
+
+
+def _describe_recording(metadata_path: Path) -> DataResource:
+    metadata = load_metadata(metadata_path)
+    global_metadata = metadata["global"]
+    modulation = str(global_metadata.get("examples:modulation") or global_metadata.get("core:description") or metadata_path.stem)
+    return DataResource(
+        identifier=metadata_path.name.removesuffix(".sigmf-meta"),
+        title=modulation,
+        source=metadata_path,
+        subtitle=f"{float(global_metadata['core:sample_rate']):g} samples/s",
+        timestamp=datetime.fromtimestamp(metadata_path.stat().st_mtime, tz=timezone.utc),
+        tags=("sigmf", str(global_metadata["core:datatype"]), modulation.lower()),
+    )
 
 
 def create_workspace(config=None):
     values = config or {}
-    root = Path(values.get("data_root", Path.cwd() / "data"))
+    root = Path(values.get("data_root", Path.cwd() / "data/comms"))
     return AnalysisWorkspace(
-        identifier=str(values.get("id", "qpsk-windowed")),
-        name=str(values.get("name", "QPSK Windowed Analysis")),
-        description="Windowed mode: drag or resize a short interval and inspect its QPSK constellation and eye diagram.",
-        source=sigmf_source(root, "qpsk.sigmf-meta"),
-        delivery=WindowedQpskDelivery(),
+        identifier=str(values.get("id", "digital-comms")),
+        name=str(values.get("name", "Digital Communications")),
+        description="Windowed mode: compare file-backed QPSK and 16-QAM recordings with constellation and eye-diagram views.",
+        source=DirectorySource(
+            root,
+            pattern="*.sigmf-meta",
+            loader=load_recording,
+            describe=_describe_recording,
+        ),
+        delivery=WindowedCommsDelivery(),
         analyze=analyze,
         category="digital communications",
-        tags=("windowed", "single-channel", "constellation", "eye diagram"),
+        tags=("windowed", "qpsk", "16-qam", "constellation", "eye diagram"),
     )

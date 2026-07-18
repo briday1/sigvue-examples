@@ -6,11 +6,10 @@ import numpy as np
 
 from workspace_browser.core.plugin import AnalysisContext
 from workspace_browser.rendering.dispatch import RenderKind, detect_render_kind
-from scientific_workspace_examples.lfm_live import create_workspace as create_live_workspace
-from scientific_workspace_examples.lfm_static import create_workspace as create_static_workspace
-from scientific_workspace_examples.lfm_pipeline import (
+from scientific_workspace_examples.radar_collection import (
     BufferedDelivery,
     CHANNEL_COLORS,
+    COLORMAPS,
     CollectionMember,
     LfmCollection,
     LfmInput,
@@ -19,17 +18,18 @@ from scientific_workspace_examples.lfm_pipeline import (
     _linear_average_db,
     _products,
     analyze_lfm,
+    create_workspace as create_live_workspace,
 )
 
 
-class LfmDeliveryTests(unittest.TestCase):
-    def test_workspace_entry_points_share_pipeline_and_change_only_delivery(self):
-        live = create_live_workspace(Path("missing"))
-        static = create_static_workspace(Path("missing"))
+class RadarCollectionTests(unittest.TestCase):
+    def test_live_workspace_uses_shared_buffered_pipeline(self):
+        live = create_live_workspace({"data_root": Path("missing")})
         self.assertIs(analyze_lfm, live.analyze)
-        self.assertIs(analyze_lfm, static.analyze)
         self.assertIsInstance(live.delivery, BufferedDelivery)
-        self.assertIsInstance(static.delivery, WholeFileDelivery)
+        self.assertIn("10-mhz", live.metadata.tags)
+        self.assertIn("2-mhz", live.metadata.tags)
+        self.assertIn("multi-target", live.metadata.tags)
 
     def test_whole_file_delivery_has_only_processing_prf_and_returns_all_samples(self):
         with TemporaryDirectory() as directory:
@@ -199,6 +199,36 @@ class LfmDeliveryTests(unittest.TestCase):
         self.assertEqual({"mean_trace", "max_trace", "noise_trace", "full_scale_trace"}, {control.picker for control in style_controls})
         self.assertEqual("#087e8b", next(control for control in style_controls if control.name == "mean_trace_color").default)
         self.assertEqual("#d35d35", next(control for control in style_controls if control.name == "max_trace_color").default)
+
+        waterfall_controls = [control for control in changed.controls if control.group == "Waterfall display"]
+        self.assertEqual(
+            ["lfm_waterfall_colormap", "lfm_time_waterfall_limits", "lfm_psd_waterfall_limits"],
+            [control.name for control in waterfall_controls],
+        )
+        self.assertTrue(all(control.placement == "details" for control in waterfall_controls))
+        self.assertEqual(COLORMAPS, waterfall_controls[0].options)
+        self.assertEqual("Plasma", waterfall_controls[0].default)
+        self.assertEqual((-100.0, -10.0), waterfall_controls[1].default)
+        self.assertEqual((-180.0, -80.0), waterfall_controls[2].default)
+        for trace in changed.figures["waterfall-domain-0"].data:
+            self.assertEqual((-100.0, -10.0), (trace.zmin, trace.zmax))
+            self.assertEqual("#0d0887", trace.colorscale[0][1])
+        for trace in changed.figures["waterfall-domain-1"].data:
+            self.assertEqual((-180.0, -80.0), (trace.zmin, trace.zmax))
+            self.assertEqual("#0d0887", trace.colorscale[0][1])
+
+        customized = AnalysisContext({
+            "lfm_waterfall_colormap": "Cividis",
+            "lfm_time_waterfall_limits": "-85,-15",
+            "lfm_psd_waterfall_limits": "-175,-95",
+        })
+        analyze_lfm(data, customized)
+        for trace in customized.figures["waterfall-domain-0"].data:
+            self.assertEqual((-85.0, -15.0), (trace.zmin, trace.zmax))
+            self.assertEqual("#00224e", trace.colorscale[0][1])
+        for trace in customized.figures["waterfall-domain-1"].data:
+            self.assertEqual((-175.0, -95.0), (trace.zmin, trace.zmax))
+            self.assertEqual("#00224e", trace.colorscale[0][1])
 
         for key in ("time-view-0", "frequency-view-0"):
             self.assert_axes_share_range(changed.figures[key], "x")

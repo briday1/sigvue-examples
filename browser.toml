@@ -3,12 +3,12 @@ title = "Scientific Workspace Browser Examples"
 subtitle = "Explore scientific and analytical results"
 
 [[workspaces]]
-use = "qpsk-windowed"
+use = "digital-comms"
 path = "."
-id = "qpsk-windowed"
-name = "QPSK Windowed Analysis"
+id = "digital-comms"
+name = "Digital Communications"
 [workspaces.config]
-data_root = "./data/qpsk-windowed"
+data_root = "./data/comms"
 
 [[workspaces]]
 use = "acoustic-events-segmented"
@@ -19,12 +19,12 @@ name = "Acoustic Event Review"
 data_root = "./data/acoustic-events-segmented"
 
 [[workspaces]]
-use = "multi-tone-seek"
+use = "radio-astronomy-rfi"
 path = "."
-id = "multi-tone-seek"
-name = "Multi-Tone Seek"
+id = "radio-astronomy-rfi"
+name = "Radio Astronomy RFI Survey"
 [workspaces.config]
-data_root = "./data/multi-tone-seek"
+data_root = "./data/radio-astronomy"
 
 [[workspaces]]
 use = "lte-recording"
@@ -39,14 +39,6 @@ filename = "*.sigmf-meta"
 use = "lfm-live"
 path = "."
 id = "lfm-live"
-name = "LFM Live"
+name = "LFM Live View"
 [workspaces.config]
-data_root = "./data/lfm-collection"
-
-[[workspaces]]
-use = "lfm-static"
-path = "."
-id = "lfm-static"
-name = "LFM Static"
-[workspaces.config]
-data_root = "./data/lfm-collection"
+data_root = "./data/lfm-live"

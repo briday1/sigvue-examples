@@ -1,4 +1,4 @@
-"""Generate the two small deterministic SigMF recordings committed with this repository."""
+"""Generate small deterministic communications recordings in ignored local data."""
 
 from __future__ import annotations
 
@@ -28,34 +28,42 @@ def write_sigmf(root: Path, name: str, samples: np.ndarray, sample_rate: float, 
     (root / f"{name}.sigmf-meta").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
-def qpsk(sample_rate: float = 100_000.0, duration: float = 1.0) -> np.ndarray:
-    rng = np.random.default_rng(10)
+def modulated_recording(
+    modulation: str,
+    *,
+    sample_rate: float = 100_000.0,
+    duration: float = 1.0,
+    seed: int,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
     count = round(sample_rate * duration)
     samples_per_symbol = 10
-    symbols = ((2 * rng.integers(0, 2, count // samples_per_symbol + 1) - 1) + 1j * (2 * rng.integers(0, 2, count // samples_per_symbol + 1) - 1)) / np.sqrt(2)
+    symbol_count = count // samples_per_symbol + 1
+    if modulation == "QPSK":
+        levels_i = 2 * rng.integers(0, 2, symbol_count) - 1
+        levels_q = 2 * rng.integers(0, 2, symbol_count) - 1
+        symbols = (levels_i + 1j * levels_q) / np.sqrt(2)
+        gain = 0.72
+    elif modulation == "16-QAM":
+        levels = np.asarray([-3, -1, 1, 3])
+        symbols = (rng.choice(levels, symbol_count) + 1j * rng.choice(levels, symbol_count)) / np.sqrt(10)
+        gain = 0.68
+    else:
+        raise ValueError(f"Unsupported modulation: {modulation}")
     baseband = np.repeat(symbols, samples_per_symbol)[:count]
     time = np.arange(count) / sample_rate
-    envelope = 0.35 + 0.45 * (0.5 + 0.5 * np.sin(2 * np.pi * 1.5 * time))
-    envelope += 0.18 * ((time > 0.42) & (time < 0.62))
-    noise_level = 0.025 + 0.055 * ((time > 0.72) & (time < 0.9))
+    envelope = gain * (0.94 + 0.06 * np.sin(2 * np.pi * 1.5 * time))
+    noise_level = 0.018 + 0.035 * ((time > 0.72) & (time < 0.9))
     noise = noise_level * (rng.normal(size=count) + 1j * rng.normal(size=count))
     return np.asarray(envelope * baseband * np.exp(1j * 2 * np.pi * 7_000 * time) + noise, dtype=np.complex64)
 
 
-def multiple_tones(sample_rate: float = 100_000.0, duration: float = 2.0) -> np.ndarray:
-    rng = np.random.default_rng(20)
-    count = round(sample_rate * duration)
-    time = np.arange(count) / sample_rate
-    samples = 0.02 * (rng.normal(size=count) + 1j * rng.normal(size=count))
-    definitions = (
-        (-28_000.0, 0.24, np.ones(count, dtype=float)),
-        (-11_000.0, 0.42, ((time >= 0.15) & (time < 0.85)).astype(float)),
-        (6_000.0, 0.34, ((time >= 0.65) & (time < 1.55)).astype(float)),
-        (23_000.0, 0.48, ((np.floor(time / 0.16) % 2) == 0).astype(float)),
-    )
-    for frequency, amplitude, gate in definitions:
-        samples += amplitude * gate * np.exp(1j * 2 * np.pi * frequency * time)
-    return np.asarray(samples, dtype=np.complex64)
+def qpsk(sample_rate: float = 100_000.0, duration: float = 1.0) -> np.ndarray:
+    return modulated_recording("QPSK", sample_rate=sample_rate, duration=duration, seed=10)
+
+
+def qam16(sample_rate: float = 100_000.0, duration: float = 1.0) -> np.ndarray:
+    return modulated_recording("16-QAM", sample_rate=sample_rate, duration=duration, seed=16)
 
 
 def main() -> None:
@@ -63,20 +71,32 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "data")
     args = parser.parse_args()
     write_sigmf(
-        args.output / "qpsk-windowed",
+        args.output / "comms",
         "qpsk",
         qpsk(),
         100_000.0,
         "Synthetic QPSK recording",
-        **{"examples:symbol_rate": 10_000.0, "examples:carrier_hz": 7_000.0},
+        **{
+            "examples:modulation": "QPSK",
+            "examples:symbol_rate": 10_000.0,
+            "examples:carrier_hz": 7_000.0,
+            "examples:constellation_limit": 0.8,
+            "examples:eye_limit": 0.9,
+        },
     )
     write_sigmf(
-        args.output / "multi-tone-seek",
-        "multiple-tones",
-        multiple_tones(),
+        args.output / "comms",
+        "16qam",
+        qam16(),
         100_000.0,
-        "Time-varying multi-tone recording",
-        **{"examples:tone_frequencies_hz": [-28_000.0, -11_000.0, 6_000.0, 23_000.0]},
+        "Synthetic 16-QAM recording",
+        **{
+            "examples:modulation": "16-QAM",
+            "examples:symbol_rate": 10_000.0,
+            "examples:carrier_hz": 7_000.0,
+            "examples:constellation_limit": 0.8,
+            "examples:eye_limit": 0.9,
+        },
     )
 
 

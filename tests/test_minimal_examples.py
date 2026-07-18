@@ -1,90 +1,105 @@
+import inspect
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from workspace_browser.web.application import create_app
 
+import scientific_workspace_examples.sigmf as sigmf
+import scientific_workspace_examples.style as style
 from scientific_workspace_examples.sigmf import load_recording
 from scripts.generate_segmented_results import EVENTS, generate as generate_segmented_results
-from scripts.generate_minimal_sigmf import multiple_tones, qpsk, write_sigmf
+from scripts.generate_minimal_sigmf import qam16, qpsk, write_sigmf
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class MinimalExampleTests(unittest.TestCase):
+    def test_shared_modules_do_not_own_browser_contracts(self):
+        self.assertNotIn("workspace_browser", inspect.getsource(sigmf))
+        self.assertNotIn("workspace_browser", inspect.getsource(style))
+        self.assertFalse(hasattr(sigmf, "SigMFWindow"))
+        self.assertFalse(hasattr(sigmf, "WindowedSigMF"))
+        self.assertFalse(hasattr(sigmf, "WholeSigMF"))
+
+    def test_shared_plot_styles_enable_subtle_light_grid(self):
+        import plotly.graph_objects as go
+
+        for figure in (
+            style.style_figure(go.Figure(), "light", "Example"),
+            style.style_plotly(go.Figure(), theme="light"),
+        ):
+            self.assertTrue(figure.layout.xaxis.showgrid)
+            self.assertTrue(figure.layout.yaxis.showgrid)
+            self.assertEqual(style.GRID, figure.layout.xaxis.gridcolor)
+            self.assertEqual(style.GRID, figure.layout.yaxis.gridcolor)
+            self.assertEqual(0.5, figure.layout.xaxis.gridwidth)
+            self.assertEqual(0.5, figure.layout.yaxis.gridwidth)
+
     def test_profile_loads_example_workspaces(self):
         app = create_app(config_path=ROOT / "browser.toml")
         self.assertEqual(
             [
-                "qpsk-windowed",
+                "digital-comms",
                 "acoustic-events-segmented",
-                "multi-tone-seek",
+                "radio-astronomy-rfi",
                 "lte-recordings",
                 "lfm-live",
-                "lfm-static",
             ],
             [workspace["id"] for workspace in app.list_workspaces()],
         )
         expected_mode_tags = {
-            "qpsk-windowed": "windowed",
+            "digital-comms": "windowed",
             "acoustic-events-segmented": "segmented",
-            "multi-tone-seek": "seek",
+            "radio-astronomy-rfi": "windowed",
             "lte-recordings": "windowed",
             "lfm-live": "live",
-            "lfm-static": "static",
         }
         for workspace in app.list_workspaces():
             self.assertIn(expected_mode_tags[workspace["id"]], workspace["tags"])
             self.assertIn(expected_mode_tags[workspace["id"]], workspace["description"].lower())
 
-    def test_compact_recordings_are_file_backed_and_use_distinct_modes(self):
+    def test_communications_recordings_are_file_backed_and_windowed(self):
         app = create_app(config_path=ROOT / "browser.toml")
-        expected = {"qpsk-windowed": "windowed", "multi-tone-seek": "seek"}
-        for workspace_id, expected_mode in expected.items():
-            items = app.list_items(workspace_id, {})
-            self.assertEqual(1, len(items))
-            self.assertTrue(Path(items[0]["source_reference"]).is_file())
-            page = app.open_item(workspace_id, items[0]["id"])["page"]
-            self.assertEqual(expected_mode, page["playback"]["mode"])
+        items = app.list_items("digital-comms", {})
+        self.assertEqual({"16qam", "qpsk"}, {item["id"] for item in items})
+        for item in items:
+            self.assertTrue(Path(item["source_reference"]).is_file())
+            page = app.open_item("digital-comms", item["id"])["page"]
+            self.assertEqual("windowed", page["playback"]["mode"])
             self.assertGreaterEqual(len(page["rendered_views"]), 1)
 
     def test_qpsk_window_has_received_power_overview(self):
         app = create_app(config_path=ROOT / "browser.toml")
-        item = app.list_items("qpsk-windowed", {})[0]
+        item = next(item for item in app.list_items("digital-comms", {}) if item["id"] == "qpsk")
         values = {"__window_start_seconds": "0.03", "__window_end_seconds": "0.04"}
-        opened = app.open_item("qpsk-windowed", item["id"], values)
+        opened = app.open_item("digital-comms", item["id"], values)
         playback = opened["page"]["playback"]
         self.assertEqual("Received power", playback["overview_label"])
         self.assertEqual(200, len(playback["overview_values"]))
 
     def test_qpsk_shows_constellation_then_eye(self):
         app = create_app(config_path=ROOT / "browser.toml")
-        item = app.list_items("qpsk-windowed", {})[0]
-        page = app.open_item("qpsk-windowed", item["id"])["page"]
+        item = next(item for item in app.list_items("digital-comms", {}) if item["id"] == "qpsk")
+        page = app.open_item("digital-comms", item["id"])["page"]
         self.assertEqual(
             ["constellation", "eye"],
             [view["name"] for view in page["rendered_views"]],
         )
         constellation = page["rendered_views"][0]["value"]
-        self.assertEqual([-0.75, 0.75], constellation["layout"]["xaxis"]["range"])
-        self.assertEqual([-0.75, 0.75], constellation["layout"]["yaxis"]["range"])
+        self.assertEqual([-0.8, 0.8], constellation["layout"]["xaxis"]["range"])
+        self.assertEqual([-0.8, 0.8], constellation["layout"]["yaxis"]["range"])
         eye = page["rendered_views"][1]["value"]
         self.assertEqual([0, 2], eye["layout"]["xaxis"]["range"])
-        self.assertEqual([-1, 1], eye["layout"]["yaxis"]["range"])
+        self.assertEqual([-0.9, 0.9], eye["layout"]["yaxis"]["range"])
 
-    def test_multi_tone_uses_one_plotly_figure_for_psd_and_waterfall(self):
+    def test_16qam_uses_same_constellation_and_eye_views(self):
         app = create_app(config_path=ROOT / "browser.toml")
-        item = app.list_items("multi-tone-seek", {})[0]
-        page = app.open_item("multi-tone-seek", item["id"])["page"]
-        self.assertEqual(["tones"], [view["name"] for view in page["rendered_views"]])
-        figure = page["rendered_views"][0]["value"]
-        self.assertEqual(["scatter", "heatmap"], [trace["type"] for trace in figure["data"]])
-        self.assertEqual([-80, 0], figure["layout"]["yaxis"]["range"])
-        self.assertEqual([0, 0.25], figure["layout"]["yaxis2"]["range"])
-        self.assertEqual("Buffer time (s)", figure["layout"]["yaxis2"]["title"]["text"])
-        self.assertEqual([-50_000, 50_000], figure["layout"]["xaxis2"]["range"])
-        self.assertEqual((-80, 0), (figure["data"][1]["zmin"], figure["data"][1]["zmax"]))
+        item = next(item for item in app.list_items("digital-comms", {}) if item["id"] == "16qam")
+        page = app.open_item("digital-comms", item["id"])["page"]
+        self.assertEqual(["constellation", "eye"], [view["name"] for view in page["rendered_views"]])
+        self.assertEqual("16-QAM", page["statistics"]["Modulation"])
 
     def test_lte_recording_renders_rf_spectrum_and_waterfall(self):
         app = create_app(config_path=ROOT / "browser.toml")
@@ -164,6 +179,19 @@ class MinimalExampleTests(unittest.TestCase):
         self.assertEqual("windowed", page["playback"]["mode"])
         self.assertEqual("847 MHz", page["statistics"]["Center frequency"])
 
+    def test_lfm_live_workspace_discovers_both_bandwidth_collections(self):
+        app = create_app(config_path=ROOT / "browser.toml")
+        items = app.list_items("lfm-live", {})
+        self.assertEqual(
+            {"lfm-10mhz", "lfm-2mhz"},
+            {item["id"] for item in items},
+        )
+        sample_rates = {
+            app.open_item("lfm-live", item["id"])["page"]["statistics"]["Sample rate"]
+            for item in items
+        }
+        self.assertEqual({"10 MHz", "2 MHz"}, sample_rates)
+
     def test_segmented_acoustic_workspace_displays_irregular_stored_results(self):
         app = create_app(config_path=ROOT / "browser.toml")
         item = app.list_items("acoustic-events-segmented", {})[0]
@@ -182,7 +210,7 @@ class MinimalExampleTests(unittest.TestCase):
         self.assertEqual("Valve actuation", selected["statistics"]["Stored event"])
 
     def test_sigmf_reader_loads_only_requested_frames(self):
-        recording = load_recording(ROOT / "data/qpsk-windowed/qpsk.sigmf-meta")
+        recording = load_recording(ROOT / "data/comms/qpsk.sigmf-meta")
         samples = recording.read(25, 100)
         self.assertEqual((1, 100), samples.shape)
         self.assertEqual((1, 10), recording.read(recording.sample_count - 10, 100).shape)
@@ -191,9 +219,9 @@ class MinimalExampleTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             write_sigmf(root, "qpsk", qpsk(duration=0.01), 100_000.0, "QPSK")
-            write_sigmf(root, "multiple-tones", multiple_tones(duration=0.01), 100_000.0, "Tones")
+            write_sigmf(root, "16qam", qam16(duration=0.01), 100_000.0, "16-QAM")
             self.assertEqual(1_000, load_recording(root / "qpsk.sigmf-meta").sample_count)
-            self.assertEqual(1_000, load_recording(root / "multiple-tones.sigmf-meta").sample_count)
+            self.assertEqual(1_000, load_recording(root / "16qam.sigmf-meta").sample_count)
             results = generate_segmented_results(root / "acoustic-events.json")
             self.assertTrue(results.is_file())
 

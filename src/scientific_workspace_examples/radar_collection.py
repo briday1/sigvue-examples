@@ -1,4 +1,4 @@
-"""Shared LFM collection loading, delivery policies, analysis, and Plotly views."""
+"""Calibrated analysis and presentation for both live LFM radar collections."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,13 +11,16 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataResource, DirectorySource, PlaybackMode, TraceStyle
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource, PlaybackMode, TraceStyle
 
-from .lfm_style import ORANGE, TEAL, hsv_channel_colors, style_plotly
+from .style import ORANGE, TEAL, hsv_channel_colors, style_plotly
 
 
 R_OHMS = 50.0
 THERMAL_NOISE_DBM_HZ = -174.0
+COLORMAPS = ("Viridis", "Cividis", "Plasma", "Inferno", "Magma", "Turbo", "Blues", "Greens", "Hot", "Jet")
+TIME_WATERFALL_LIMITS_DBM = (-100.0, -10.0)
+PSD_WATERFALL_LIMITS_DBM_HZ = (-180.0, -80.0)
 CHANNEL_COLORS = hsv_channel_colors(4)
 
 
@@ -67,7 +70,7 @@ class LfmInput:
     ota_counts: np.ndarray
 
 
-class BufferedDelivery:
+class BufferedDelivery(DataDelivery[LfmCollection, LfmInput]):
     """Framework policy for playback: deliver one requested OTA window."""
 
     def __init__(self, *, playback_mode: PlaybackMode = "live") -> None:
@@ -103,7 +106,7 @@ class BufferedDelivery:
         return _input(collection, start=start, count=size, pri=pri, ui=ui)
 
 
-class WholeFileDelivery:
+class WholeFileDelivery(DataDelivery[LfmCollection, LfmInput]):
     """Framework policy for batch mode: deliver the complete OTA member files."""
 
     def __init__(self, *, default_processing_prf_hz: float | None = None) -> None:
@@ -144,20 +147,39 @@ def create_lfm_workspace(
     *,
     identifier: str,
     name: str,
-    delivery: BufferedDelivery | WholeFileDelivery,
+    delivery: DataDelivery[LfmCollection, LfmInput],
     description: str = "Manifest-defined calibration, noise, and OTA LFM collection.",
-    tags: tuple[str, ...] = ("lfm", "10-mhz", "calibration", "four-channel"),
+    tags: tuple[str, ...] = ("lfm", "2-mhz", "calibration", "four-channel", "multi-target"),
 ) -> AnalysisWorkspace:
     directory = path or Path.cwd() / "data" / "lfm-collection"
     return AnalysisWorkspace(
         identifier=identifier,
         name=name,
         description=description,
-        source=DirectorySource(directory, pattern="*.sigmf-collection", loader=read_collection, describe=describe_collection),
+        source=DirectorySource(
+            directory,
+            pattern="*.sigmf-collection",
+            loader=read_collection,
+            describe=describe_collection,
+            recursive=True,
+        ),
         delivery=delivery,
         analyze=analyze_lfm,
         category="signal analysis",
         tags=tags,
+    )
+
+
+def create_workspace(config=None) -> AnalysisWorkspace:
+    """Create the single live workspace that discovers both LFM collections."""
+    values = config or {}
+    return create_lfm_workspace(
+        Path(values.get("data_root", Path.cwd() / "data/lfm-live")),
+        identifier=str(values.get("id", "lfm-live")),
+        name=str(values.get("name", "LFM Live View")),
+        delivery=BufferedDelivery(),
+        description="Choose a 10 MHz single-return or 2 MHz multi-target collection, then follow it live or seek through history using the same buffered calibration analysis.",
+        tags=("live", "four-channel", "calibrated", "LFM", "10-mhz", "2-mhz", "multi-target", "waterfall"),
     )
 
 
@@ -261,6 +283,31 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
     calibrated_tone = _apply_calibration(data.calibration_counts, calibration)
     calibrated_noise = data.noise_counts * calibration.volts_per_count[:, None]
     products = _products(ota, data.sample_rate, data.pri_samples, data.start_sample)
+    waterfall_colormap = ui.colormap(
+        "lfm_waterfall_colormap",
+        label="Colormap",
+        default="Plasma",
+        options=COLORMAPS,
+        group="Waterfall display",
+    )
+    time_waterfall_limits = ui.limits(
+        "lfm_time_waterfall_limits",
+        label="Fast-time power z-limits (dBm)",
+        default=TIME_WATERFALL_LIMITS_DBM,
+        minimum=-200.0,
+        maximum=50.0,
+        step=1.0,
+        group="Waterfall display",
+    )
+    psd_waterfall_limits = ui.limits(
+        "lfm_psd_waterfall_limits",
+        label="Frequency PSD z-limits (dBm/Hz)",
+        default=PSD_WATERFALL_LIMITS_DBM_HZ,
+        minimum=-240.0,
+        maximum=0.0,
+        step=1.0,
+        group="Waterfall display",
+    )
 
     phase_rows = [
         {
@@ -289,8 +336,20 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
         ui.view_switcher(
             "Domain",
             {
-                "Fast-time power": _waterfall_figure(products, "time", ui.theme),
-                "Frequency PSD": _waterfall_figure(products, "frequency", ui.theme),
+                "Fast-time power": _waterfall_figure(
+                    products,
+                    "time",
+                    ui.theme,
+                    waterfall_colormap,
+                    time_waterfall_limits,
+                ),
+                "Frequency PSD": _waterfall_figure(
+                    products,
+                    "frequency",
+                    ui.theme,
+                    waterfall_colormap,
+                    psd_waterfall_limits,
+                ),
             },
             key="waterfall-domain",
             selector="buttons",
@@ -660,7 +719,13 @@ def _averaged_psd(
     return frequencies, _db10(psd / 1e-3)
 
 
-def _waterfall_figure(products: Products, domain: str, theme: str) -> go.Figure:
+def _waterfall_figure(
+    products: Products,
+    domain: str,
+    theme: str,
+    colormap: str,
+    zlimits: tuple[float, float],
+) -> go.Figure:
     figure = make_subplots(
         rows=2,
         cols=2,
@@ -673,7 +738,20 @@ def _waterfall_figure(products: Products, domain: str, theme: str) -> go.Figure:
             x, z, title = products.fast_time_us, products.time_waterfall_dbm[channel], "Power (dBm)"
         else:
             x, z, title = products.frequencies_hz, products.psd_waterfall_dbm_hz[channel], "PSD (dBm/Hz)"
-        figure.add_trace(go.Heatmap(x=x, y=products.slow_time_s, z=z, colorscale="Viridis", showscale=channel == 3, colorbar={"title": title}), row=channel // 2 + 1, col=channel % 2 + 1)
+        figure.add_trace(
+            go.Heatmap(
+                x=x,
+                y=products.slow_time_s,
+                z=z,
+                zmin=zlimits[0],
+                zmax=zlimits[1],
+                colorscale=colormap,
+                showscale=channel == 3,
+                colorbar={"title": title},
+            ),
+            row=channel // 2 + 1,
+            col=channel % 2 + 1,
+        )
     figure.update_yaxes(title_text="Relative slow time (s)", col=1)
     figure.update_xaxes(title_text="Fast time (us)" if domain == "time" else "Frequency (Hz)", row=2)
     return style_plotly(

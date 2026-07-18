@@ -9,7 +9,7 @@ from pathlib import Path
 
 import plotly.graph_objects as go
 
-from workspace_browser.plugin import AnalysisWorkspace, DataResource, DirectorySource, Segment
+from workspace_browser.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource, Segment
 
 from .style import COLORS, style_figure
 
@@ -34,10 +34,10 @@ class AcousticEventCollection:
     events: tuple[StoredEventResults, ...]
 
 
-class StoredEventDelivery:
+class StoredEventDelivery(DataDelivery[AcousticEventCollection, StoredEventResults]):
     """Select one stored result; no signal processing occurs in the workspace."""
 
-    def prepare(self, collection: AcousticEventCollection, ui) -> StoredEventResults:
+    def prepare(self, collection: AcousticEventCollection, ui: AnalysisContext) -> StoredEventResults:
         selected = ui.segmented(
             duration=collection.duration_seconds,
             segments=tuple(
@@ -48,7 +48,7 @@ class StoredEventDelivery:
         return next(event for event in collection.events if event.identifier == selected.identifier)
 
 
-def analyze(event: StoredEventResults, ui) -> None:
+def analyze(event: StoredEventResults, ui: AnalysisContext) -> None:
     ui.stat("Stored event", event.label)
     ui.stat("Confidence", f"{event.confidence:.1%}")
     ui.stat("Start", f"{event.start_seconds:.3f} s")
@@ -75,9 +75,9 @@ def analyze(event: StoredEventResults, ui) -> None:
     spectrum.update_yaxes(title_text="Stored magnitude (dB)", range=[-80, 5])
 
     with ui.tab("Stored waveform"):
-        ui.plot(style_figure(waveform, ui, event.label), key="waveform")
+        ui.plot(style_figure(waveform, ui.theme, event.label), key="waveform")
     with ui.tab("Stored spectrum"):
-        ui.plot(style_figure(spectrum, ui, f"{event.label} spectrum"), key="spectrum")
+        ui.plot(style_figure(spectrum, ui.theme, f"{event.label} spectrum"), key="spectrum")
 
 
 def create_workspace(config=None):
