@@ -15,7 +15,15 @@ from scipy.io import savemat
 
 from sigvue.plugin import Annotation, AnnotationRequest, AnalysisContext, AnalysisWorkspace, DataAnnotator, DataDelivery, DataExporter, DataResource, DirectorySource, ExportRequest, PlaybackMode, TraceStyle
 
-from .capabilities import FORMATS, SCOPES, add_sigmf_annotation, read_sigmf_annotations, waterfall_annotation_fields
+from .capabilities import (
+    FORMATS,
+    SCOPES,
+    SIGNAL_DISCOVERY_COLUMNS,
+    add_sigmf_annotation,
+    read_sigmf_annotations,
+    sigmf_discovery_summary,
+    waterfall_annotation_fields,
+)
 from .sigmf import load_recording
 from .style import ORANGE, TEAL, hsv_channel_colors, style_plotly
 
@@ -304,6 +312,7 @@ def create_lfm_workspace(
         analyze=analyze_lfm,
         category="signal analysis",
         tags=tags,
+        discovery_columns=SIGNAL_DISCOVERY_COLUMNS,
     )
 
 
@@ -322,12 +331,25 @@ def create_workspace(config=None) -> AnalysisWorkspace:
 
 def describe_collection(path: Path) -> DataResource:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    member = next((value for value in payload["members"] if value["role"] == "ota"), None)
+    member_path = path.parent / member["metadata"] if member is not None else None
+    member_metadata = (
+        json.loads(member_path.read_text(encoding="utf-8"))
+        if member_path is not None and member_path.is_file()
+        else {
+            "global": {"core:sample_rate": payload["collection"].get("sample_rate")},
+            "captures": [],
+        }
+    )
     return DataResource(
         path.stem,
         payload["collection"]["name"],
         source=path,
         tags=("sigmf-collection", "ci16", "four-channel"),
-        summary={"members": "calibration, terminated-noise, ota"},
+        summary={
+            **sigmf_discovery_summary(member_metadata),
+            "members": "calibration, terminated-noise, ota",
+        },
     )
 
 
@@ -388,6 +410,7 @@ class Calibration:
 class Products:
     fast_time_us: np.ndarray
     slow_time_s: np.ndarray
+    slow_time_edges_s: np.ndarray
     frequencies_hz: np.ndarray
     time_mean_dbm: np.ndarray
     time_max_dbm: np.ndarray
@@ -425,6 +448,7 @@ def analyze_lfm(data: LfmInput, ui: AnalysisContext) -> None:
         label="Annotation boxes",
         color="#ffffff",
         width=0.5,
+        opacity=0.6,
         line_style="solid",
         group="Annotation display",
     )
@@ -718,6 +742,7 @@ def _products(
     time_waterfall = []
     psd_waterfall = []
     slow_time = []
+    slow_time_edges = [0.0]
     group_size = max(1, ceil(row_count / max_rows))
     for first in range(0, row_count, group_size):
         block = rows[:, first : min(first + group_size, row_count)]
@@ -732,11 +757,13 @@ def _products(
         psd_max = np.maximum(psd_max, np.max(psd, axis=1))
         psd_waterfall.append(_db10(np.mean(psd, axis=1) / 1e-3))
         slow_time.append((first + block.shape[1] / 2) * pri / rate)
+        slow_time_edges.append((first + block.shape[1]) * pri / rate)
     psd_mean = _db10((psd_sum / row_count) / 1e-3)
     psd_hold = _db10(psd_max / 1e-3)
     return Products(
         fast_time,
         np.asarray(slow_time),
+        np.asarray(slow_time_edges),
         frequencies,
         time_mean,
         time_max,
@@ -903,7 +930,7 @@ def _waterfall_figure(
         figure.add_trace(
             go.Heatmap(
                 x=x,
-                y=products.slow_time_s,
+                y=products.slow_time_edges_s,
                 z=z,
                 zmin=zlimits[0],
                 zmax=zlimits[1],
@@ -915,23 +942,21 @@ def _waterfall_figure(
             col=channel % 2 + 1,
         )
     displayed_slow_times = np.sort(np.asarray(products.slow_time_s, dtype=float))
-    if displayed_slow_times.size > 1:
-        slow_time_bin = float(np.median(np.diff(displayed_slow_times)))
-        slow_time_start = max(0.0, float(displayed_slow_times[0]) - slow_time_bin / 2)
-        slow_time_stop = float(displayed_slow_times[-1]) + slow_time_bin / 2
+    slow_time_edges = np.asarray(products.slow_time_edges_s, dtype=float)
+    slow_time_start = float(slow_time_edges[0])
+    slow_time_stop = float(slow_time_edges[-1])
+    displayed_x = products.fast_time_us if domain == "time" else products.frequencies_hz
+    if displayed_x.size > 1:
+        x_spacing = float(np.median(np.diff(np.sort(np.asarray(displayed_x, dtype=float)))))
+        x_start = float(np.min(displayed_x)) - x_spacing / 2
+        x_stop = float(np.max(displayed_x)) + x_spacing / 2
     else:
-        slow_time_start = 0.0
-        slow_time_stop = max(float(displayed_slow_times[0]) * 2, 1e-12)
+        x_start = float(displayed_x[0]) - 0.5
+        x_stop = float(displayed_x[0]) + 0.5
     if domain == "frequency" and show_annotations and annotation_style is not None and products.frequencies_hz.size:
         view_lower_hz = float(np.min(products.frequencies_hz))
         view_upper_hz = float(np.max(products.frequencies_hz))
         view_stop_seconds = window_start_seconds + slow_time_stop
-        displayed_slow_time_start = slow_time_start
-        displayed_slow_time_stop = slow_time_stop
-        if displayed_slow_times.size > 1:
-            displayed_slow_time_bin = float(np.median(np.diff(displayed_slow_times)))
-        else:
-            displayed_slow_time_bin = max(view_stop_seconds - window_start_seconds, 1e-12)
         polygon_x: list[float | None] = []
         polygon_y: list[float | None] = []
         hover_x: list[float] = []
@@ -952,18 +977,12 @@ def _waterfall_figure(
             x0, x1 = max(view_lower_hz, lower_hz), min(view_upper_hz, upper_hz)
             exact_y0 = max(window_start_seconds, annotation.start_seconds) - window_start_seconds
             exact_y1 = min(view_stop_seconds, annotation_stop) - window_start_seconds
-            center = (exact_y0 + exact_y1) / 2
-            nearest_slow_time = float(
-                displayed_slow_times[np.argmin(np.abs(displayed_slow_times - center))]
-            )
-            y0 = max(
-                displayed_slow_time_start,
-                min(exact_y0, nearest_slow_time - displayed_slow_time_bin / 2),
-            )
-            y1 = min(
-                displayed_slow_time_stop,
-                max(exact_y1, nearest_slow_time + displayed_slow_time_bin / 2),
-            )
+            first_bin = int(np.searchsorted(slow_time_edges, exact_y0, side="right") - 1)
+            last_bin = int(np.searchsorted(slow_time_edges, exact_y1, side="left") - 1)
+            first_bin = min(displayed_slow_times.size - 1, max(0, first_bin))
+            last_bin = min(displayed_slow_times.size - 1, max(first_bin, last_bin))
+            y0 = min(exact_y0, float(slow_time_edges[first_bin]))
+            y1 = max(exact_y1, float(slow_time_edges[last_bin + 1]))
             description = annotation.comment or annotation.label or "Annotation"
             hover = (
                 f"{description}<br>Time: {annotation.start_seconds:.9g}–{annotation_stop:.9g} s"
@@ -1009,9 +1028,26 @@ def _waterfall_figure(
         title_text="Relative slow time (s)",
         range=[slow_time_start, slow_time_stop],
         autorange=False,
+        minallowed=slow_time_start,
+        maxallowed=slow_time_stop,
+        autorangeoptions={"clipmin": slow_time_start, "clipmax": slow_time_stop},
         col=1,
     )
-    figure.update_yaxes(range=[slow_time_start, slow_time_stop], autorange=False, col=2)
+    figure.update_yaxes(
+        range=[slow_time_start, slow_time_stop],
+        autorange=False,
+        minallowed=slow_time_start,
+        maxallowed=slow_time_stop,
+        autorangeoptions={"clipmin": slow_time_start, "clipmax": slow_time_stop},
+        col=2,
+    )
+    figure.update_xaxes(
+        range=[x_start, x_stop],
+        autorange=False,
+        minallowed=x_start,
+        maxallowed=x_stop,
+        autorangeoptions={"clipmin": x_start, "clipmax": x_stop},
+    )
     figure.update_xaxes(title_text="Fast time (us)" if domain == "time" else "Frequency (Hz)", row=2)
     return style_plotly(
         figure,
@@ -1169,8 +1205,8 @@ def _combined_channel_figure(
                 y=values[channel],
                 name=f"{channel_name} {value_label}",
                 mode=value_style.mode,
-                line={**value_style.line, "color": color},
-                marker={**value_style.plotly_marker, "color": color},
+                line={**value_style.line, "color": value_style.color_with_opacity(color)},
+                marker={**value_style.plotly_marker, "color": value_style.color_with_opacity(color)},
                 legendgroup=channel_name,
             )
         )

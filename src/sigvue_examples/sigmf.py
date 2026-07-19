@@ -66,7 +66,11 @@ def append_annotation(metadata_path: Path, annotation: dict[str, object]) -> Non
         temporary.replace(metadata_path)
 
 
-def load_recording(metadata_path: Path) -> SigMFRecording:
+def load_recording(
+    metadata_path: Path,
+    *,
+    sample_rate_fallback: float | None = None,
+) -> SigMFRecording:
     metadata = load_metadata(metadata_path)
     global_metadata = metadata["global"]
     datatype = str(global_metadata.get("core:datatype"))
@@ -74,12 +78,18 @@ def load_recording(metadata_path: Path) -> SigMFRecording:
     if scalar_bytes is None:
         raise ValueError(f"Unsupported SigMF datatype: {datatype}")
     channel_count = int(global_metadata.get("core:num_channels", 1))
+    raw_sample_rate = global_metadata.get("core:sample_rate")
+    if raw_sample_rate is None and sample_rate_fallback is None:
+        raise ValueError(f"{metadata_path.name} does not define core:sample_rate")
+    sample_rate = float(raw_sample_rate if raw_sample_rate is not None else sample_rate_fallback)
+    if sample_rate <= 0:
+        raise ValueError(f"{metadata_path.name} must have a positive sample rate")
     data_path = metadata_path.with_name(metadata_path.name.removesuffix(".sigmf-meta") + ".sigmf-data")
     sample_count = data_path.stat().st_size // (channel_count * 2 * scalar_bytes)
     return SigMFRecording(
         metadata_path,
         data_path,
-        float(global_metadata["core:sample_rate"]),
+        sample_rate,
         channel_count,
         sample_count,
         metadata,

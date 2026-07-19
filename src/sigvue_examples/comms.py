@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 
 from sigvue.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource
 
-from .capabilities import SigMFAnnotator, SigMFExporter
+from .capabilities import SIGNAL_DISCOVERY_COLUMNS, SigMFAnnotator, SigMFExporter, sigmf_discovery_summary
 from .sigmf import SigMFRecording, load_metadata, load_recording
 from .style import COLORS, style_figure
 
@@ -32,6 +32,14 @@ class CommsWindow:
     def time_seconds(self) -> np.ndarray:
         return (self.start_sample + np.arange(self.samples.shape[1])) / self.sample_rate
 
+    @property
+    def sample_positions(self) -> np.ndarray:
+        return self.start_sample + np.arange(self.samples.shape[1])
+
+    @property
+    def uses_sample_coordinates(self) -> bool:
+        return self.recording.metadata["global"].get("core:sample_rate") is None
+
 
 class WindowedCommsDelivery(DataDelivery[SigMFRecording, CommsWindow]):
     """Select a short interval over a decimated received-power overview."""
@@ -41,17 +49,23 @@ class WindowedCommsDelivery(DataDelivery[SigMFRecording, CommsWindow]):
             f"comms-power-overview:{recording.metadata_path}",
             lambda: _power_overview(recording),
         )
-        start_seconds, end_seconds = ui.windowed(
-            duration=recording.duration_seconds,
-            default_window=min(0.03, recording.duration_seconds),
-            minimum_window=min(0.005, recording.duration_seconds),
-            step=min(0.005, recording.duration_seconds),
+        normalized = recording.metadata["global"].get("core:sample_rate") is None
+        duration = float(recording.sample_count) if normalized else recording.duration_seconds
+        default_window = min(4096.0, duration) if normalized else min(0.03, duration)
+        minimum_window = min(256.0, duration) if normalized else min(0.005, duration)
+        step = min(128.0, duration) if normalized else min(0.005, duration)
+        start_coordinate, end_coordinate = ui.windowed(
+            duration=duration,
+            default_window=default_window,
+            minimum_window=minimum_window,
+            step=step,
             overview=overview,
             overview_label="Received power",
-            time_unit="ms",
+            time_unit="samples" if normalized else "ms",
         )
-        start = round(start_seconds * recording.sample_rate)
-        count = max(1, round((end_seconds - start_seconds) * recording.sample_rate))
+        scale = 1.0 if normalized else recording.sample_rate
+        start = round(start_coordinate * scale)
+        count = max(1, round((end_coordinate - start_coordinate) * scale))
         return CommsWindow(recording, start, recording.read(start, count))
 
 
@@ -66,11 +80,17 @@ def _power_overview(recording: SigMFRecording) -> np.ndarray:
 def analyze(data: CommsWindow, ui: AnalysisContext) -> None:
     samples = data.samples[0]
     metadata = data.recording.metadata["global"]
-    modulation = str(metadata.get("examples:modulation", "Digital modulation"))
-    symbol_rate = float(metadata["examples:symbol_rate"])
-    carrier_hz = float(metadata["examples:carrier_hz"])
-    baseband = samples * np.exp(-1j * 2 * np.pi * carrier_hz * data.time_seconds)
-    samples_per_symbol = max(1, round(data.sample_rate / symbol_rate))
+    modulation = _modulation_label(metadata, data.recording.metadata_path.stem)
+    if data.uses_sample_coordinates:
+        samples_per_symbol = max(1, int(metadata.get("examples:samples_per_symbol", 8)))
+        carrier_cycles_per_sample = float(metadata.get("examples:carrier_cycles_per_sample", 0.0))
+        baseband = samples * np.exp(-1j * 2 * np.pi * carrier_cycles_per_sample * data.sample_positions)
+        symbol_rate = None
+    else:
+        symbol_rate = float(metadata["examples:symbol_rate"])
+        carrier_hz = float(metadata["examples:carrier_hz"])
+        baseband = samples * np.exp(-1j * 2 * np.pi * carrier_hz * data.time_seconds)
+        samples_per_symbol = max(1, round(data.sample_rate / symbol_rate))
     alignment = (-data.start_sample) % samples_per_symbol
     aligned = baseband[alignment:]
 
@@ -83,7 +103,8 @@ def analyze(data: CommsWindow, ui: AnalysisContext) -> None:
         marker={"color": COLORS[0], "size": 6, "opacity": 0.55},
         showlegend=False,
     ))
-    constellation_limit = float(metadata.get("examples:constellation_limit", 0.8))
+    default_constellation_limit = _comfortable_limit(symbols, 0.8)
+    constellation_limit = float(metadata.get("examples:constellation_limit", default_constellation_limit))
     constellation.update_xaxes(
         title_text="In-phase",
         range=[-constellation_limit, constellation_limit],
@@ -121,12 +142,16 @@ def analyze(data: CommsWindow, ui: AnalysisContext) -> None:
             mode="lines",
             line={"color": COLORS[1], "width": 1},
         ))
-    eye_limit = float(metadata.get("examples:eye_limit", constellation_limit))
+    eye_limit = float(metadata.get("examples:eye_limit", _comfortable_limit(aligned, constellation_limit)))
     eye.update_xaxes(title_text="Symbol periods", range=[0, 2], autorange=False)
     eye.update_yaxes(title_text="Amplitude", range=[-eye_limit, eye_limit], autorange=False)
 
     ui.stat("Modulation", modulation)
-    ui.stat("Symbol rate", f"{symbol_rate / 1e3:g} ksym/s")
+    if symbol_rate is None:
+        ui.stat("Coordinate basis", "Normalized samples")
+        ui.stat("Samples per symbol", samples_per_symbol)
+    else:
+        ui.stat("Symbol rate", f"{symbol_rate / 1e3:g} ksym/s")
     with ui.tab("Constellation"):
         ui.plot(style_figure(constellation, ui.theme, f"{modulation} constellation"), key="constellation")
     with ui.tab("Eye diagram"):
@@ -136,14 +161,20 @@ def analyze(data: CommsWindow, ui: AnalysisContext) -> None:
 def _describe_recording(metadata_path: Path) -> DataResource:
     metadata = load_metadata(metadata_path)
     global_metadata = metadata["global"]
-    modulation = str(global_metadata.get("examples:modulation") or global_metadata.get("core:description") or metadata_path.stem)
+    modulation = _modulation_label(global_metadata, metadata_path.stem)
+    raw_sample_rate = global_metadata.get("core:sample_rate")
     return DataResource(
         identifier=metadata_path.name.removesuffix(".sigmf-meta"),
         title=modulation,
         source=metadata_path,
-        subtitle=f"{float(global_metadata['core:sample_rate']):g} samples/s",
+        subtitle=(
+            f"{float(raw_sample_rate):g} samples/s"
+            if raw_sample_rate is not None
+            else "Sample-normalized (rate unavailable)"
+        ),
         timestamp=datetime.fromtimestamp(metadata_path.stat().st_mtime, tz=timezone.utc),
         tags=("sigmf", str(global_metadata["core:datatype"]), modulation.lower()),
+        summary=sigmf_discovery_summary(metadata),
     )
 
 
@@ -157,7 +188,7 @@ def create_workspace(config=None):
         source=DirectorySource(
             root,
             pattern="*.sigmf-meta",
-            loader=load_recording,
+            loader=lambda path: load_recording(path, sample_rate_fallback=1.0),
             describe=_describe_recording,
         ),
         delivery=WindowedCommsDelivery(),
@@ -166,4 +197,26 @@ def create_workspace(config=None):
         analyze=analyze,
         category="digital communications",
         tags=("windowed", "qpsk", "16-qam", "constellation", "eye diagram"),
+        discovery_columns=SIGNAL_DISCOVERY_COLUMNS,
     )
+
+
+def _modulation_label(metadata: dict[str, object], fallback: str) -> str:
+    explicit = metadata.get("examples:modulation")
+    if explicit:
+        return str(explicit)
+    description = str(metadata.get("core:description") or fallback)
+    upper = description.upper()
+    if "16-QAM" in upper or "16QAM" in upper:
+        return "16-QAM"
+    if "QPSK" in upper:
+        return "QPSK"
+    return description
+
+
+def _comfortable_limit(values: np.ndarray, fallback: float) -> float:
+    values = np.asarray(values)
+    if not values.size:
+        return fallback
+    extent = float(np.quantile(np.maximum(np.abs(values.real), np.abs(values.imag)), 0.995))
+    return max(1e-6, extent * 1.15)

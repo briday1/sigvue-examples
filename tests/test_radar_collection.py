@@ -127,6 +127,21 @@ class RadarCollectionTests(unittest.TestCase):
         np.testing.assert_allclose(aligned.slow_time_s, shifted.slow_time_s)
         self.assertAlmostEqual(0.05, shifted.slow_time_s[0])
 
+    def test_slow_time_edges_match_exact_processed_pri_groups(self):
+        products = _products(
+            np.ones((4, 7_690), dtype=np.complex64),
+            rate=1_000.0,
+            pri=10,
+            start=0,
+        )
+        self.assertEqual(products.slow_time_s.size + 1, products.slow_time_edges_s.size)
+        self.assertEqual(0.0, products.slow_time_edges_s[0])
+        self.assertAlmostEqual(7.69, products.slow_time_edges_s[-1])
+        np.testing.assert_allclose(
+            products.slow_time_s,
+            (products.slow_time_edges_s[:-1] + products.slow_time_edges_s[1:]) / 2,
+        )
+
     def test_full_pri_psd_is_invariant_to_circular_fast_time_shift(self):
         pri = 1_024
         pulse = np.zeros(pri, dtype=np.complex64)
@@ -220,7 +235,10 @@ class RadarCollectionTests(unittest.TestCase):
         self.assertEqual(4, len(set(CHANNEL_COLORS)))
         self.assertFalse(any(control.name.startswith("channel_") for control in changed.controls))
         style_controls = [control for control in changed.controls if control.group == "Plot styles"]
-        self.assertEqual(16, len(style_controls))
+        self.assertEqual(20, len(style_controls))
+        self.assertTrue(
+            all(control.default == 1.0 for control in style_controls if control.name.endswith("_opacity"))
+        )
         self.assertEqual({"mean_trace", "max_trace", "noise_trace", "full_scale_trace"}, {control.picker for control in style_controls})
         self.assertEqual("#087e8b", next(control for control in style_controls if control.name == "mean_trace_color").default)
         self.assertEqual("#d35d35", next(control for control in style_controls if control.name == "max_trace_color").default)
@@ -277,6 +295,10 @@ class RadarCollectionTests(unittest.TestCase):
         for key in ("waterfall-domain-0", "waterfall-domain-1"):
             self.assert_axes_share_range(changed.figures[key], "x")
             self.assert_axes_share_range(changed.figures[key], "y")
+            for axis in (*changed.figures[key].select_xaxes(), *changed.figures[key].select_yaxes()):
+                self.assertIsNot(axis.fixedrange, True)
+                self.assertEqual(float(axis.range[0]), float(axis.minallowed))
+                self.assertEqual(float(axis.range[1]), float(axis.maxallowed))
         for key in (
             "phase-plot",
             "amplitude-plot",

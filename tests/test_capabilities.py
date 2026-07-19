@@ -65,6 +65,13 @@ class SigMFCapabilityTests(unittest.TestCase):
             delivered = type("Window", (), {"start_sample": 0, "samples": recording.read(0, 8)})()
             annotator = WaterfallSigMFAnnotator("spectrum", "annotation_region_color")
             self.assertEqual("annotation_region_color", annotator.timeline_color_control)
+            self.assertTrue(
+                all(
+                    field.plot_binding.selection_policy == "box_preferred"
+                    for field in annotator.fields
+                    if field.plot_binding is not None
+                )
+            )
             created = annotator.annotate(
                 recording,
                 delivered,

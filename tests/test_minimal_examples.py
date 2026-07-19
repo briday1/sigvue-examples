@@ -1,4 +1,5 @@
 import inspect
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -7,6 +8,7 @@ from sigvue.web.application import create_app
 
 import sigvue_examples.sigmf as sigmf
 import sigvue_examples.style as style
+from sigvue_examples.comms import create_workspace as create_comms_workspace
 from sigvue_examples.sigmf import load_recording
 from scripts.generate_segmented_results import EVENTS, generate as generate_segmented_results
 from scripts.generate_minimal_sigmf import qam16, qpsk, write_sigmf
@@ -16,6 +18,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MinimalExampleTests(unittest.TestCase):
+    def test_every_workspace_declares_standard_discovery_columns(self):
+        app = create_app(config_path=ROOT / "browser.toml")
+        for workspace in app.list_workspaces():
+            listing = app.browse_items(workspace["id"], {})
+            self.assertEqual(
+                ["date", "sample_rate", "rf_frequency"],
+                [column["key"] for column in listing["columns"]],
+                workspace["id"],
+            )
+
     def test_shared_modules_do_not_own_browser_contracts(self):
         self.assertNotIn("sigvue", inspect.getsource(sigmf))
         self.assertNotIn("sigvue", inspect.getsource(style))
@@ -63,13 +75,32 @@ class MinimalExampleTests(unittest.TestCase):
     def test_communications_recordings_are_file_backed_and_windowed(self):
         app = create_app(config_path=ROOT / "browser.toml")
         items = app.list_items("digital-comms", {})
-        self.assertEqual({"16qam", "qpsk"}, {item["id"] for item in items})
+        self.assertTrue({"16qam", "qpsk"}.issubset({item["id"] for item in items}))
         for item in items:
             self.assertTrue(Path(item["source_reference"]).is_file())
             page = app.open_item("digital-comms", item["id"])["page"]
             self.assertEqual("windowed", page["playback"]["mode"])
-            self.assertEqual("ms", page["playback"]["time_unit"])
+            expected_unit = "samples" if "Sample-normalized" in item["subtitle"] else "ms"
+            self.assertEqual(expected_unit, page["playback"]["time_unit"])
             self.assertGreaterEqual(len(page["rendered_views"]), 1)
+
+    def test_null_sample_rate_uses_normalized_sample_coordinates(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            samples = qpsk(sample_rate=10_000.0, duration=0.1)
+            write_sigmf(root, "normalized-qpsk", samples, 10_000.0, "QPSK without a known rate")
+            metadata_path = root / "normalized-qpsk.sigmf-meta"
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            metadata["global"]["core:sample_rate"] = None
+            metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+            workspace = create_comms_workspace({"data_root": root})
+            item = workspace.discover_items()[0]
+            self.assertEqual("Sample-normalized (rate unavailable)", item.subtitle)
+            opened = workspace.open_item(item.identifier)
+            self.assertEqual("samples", opened.page.playback.time_unit)
+            self.assertEqual(float(samples.size), opened.page.playback.duration_seconds)
+            self.assertEqual("Normalized samples", opened.page.statistics["Coordinate basis"])
 
     def test_qpsk_window_has_received_power_overview(self):
         app = create_app(config_path=ROOT / "browser.toml")

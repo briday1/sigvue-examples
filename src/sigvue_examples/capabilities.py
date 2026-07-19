@@ -17,6 +17,7 @@ from sigvue.plugin import (
     AnnotationRequest,
     CapabilityChoice,
     DataAnnotator,
+    DiscoveryColumn,
     DataExporter,
     ExportRequest,
 )
@@ -26,6 +27,23 @@ from .sigmf import SigMFRecording, annotations, append_annotation
 
 SCOPES = (CapabilityChoice("buffer", "Current buffer"), CapabilityChoice("full", "Full file"))
 FORMATS = (CapabilityChoice("json", "JSON"), CapabilityChoice("mat", "MAT"))
+SIGNAL_DISCOVERY_COLUMNS = (
+    DiscoveryColumn("date", "Date", "datetime"),
+    DiscoveryColumn("sample_rate", "Sampling rate", "si", unit="sample/s"),
+    DiscoveryColumn("rf_frequency", "RF frequency", "si", unit="Hz"),
+)
+
+
+def sigmf_discovery_summary(metadata: dict[str, object]) -> dict[str, object | None]:
+    """Extract sortable browser values without inventing absent SigMF metadata."""
+    global_metadata = metadata.get("global", {})
+    captures = metadata.get("captures", [])
+    capture = captures[0] if captures else {}
+    return {
+        "date": capture.get("core:datetime") or global_metadata.get("core:datetime"),
+        "sample_rate": global_metadata.get("core:sample_rate"),
+        "rf_frequency": capture.get("core:frequency"),
+    }
 
 
 def annotation_fields() -> tuple[AnnotationField, ...]:
@@ -112,7 +130,12 @@ def waterfall_annotation_fields(
             "number",
             required=True,
             plot_binding=AnnotationPlotBinding(
-                view, "yaxis2", "lower", scale=time_scale, offset_source=time_offset_source
+                view,
+                "yaxis2",
+                "lower",
+                scale=time_scale,
+                offset_source=time_offset_source,
+                selection_policy="box_preferred",
             ),
         ),
         AnnotationField(
@@ -121,7 +144,12 @@ def waterfall_annotation_fields(
             "number",
             required=True,
             plot_binding=AnnotationPlotBinding(
-                view, "yaxis2", "upper", scale=time_scale, offset_source=time_offset_source
+                view,
+                "yaxis2",
+                "upper",
+                scale=time_scale,
+                offset_source=time_offset_source,
+                selection_policy="box_preferred",
             ),
         ),
         AnnotationField(
@@ -129,14 +157,26 @@ def waterfall_annotation_fields(
             "Lower RF frequency (Hz)",
             "number",
             required=True,
-            plot_binding=AnnotationPlotBinding(view, "xaxis2", "lower", scale=frequency_scale),
+            plot_binding=AnnotationPlotBinding(
+                view,
+                "xaxis2",
+                "lower",
+                scale=frequency_scale,
+                selection_policy="box_preferred",
+            ),
         ),
         AnnotationField(
             "frequency_upper_hz",
             "Upper RF frequency (Hz)",
             "number",
             required=True,
-            plot_binding=AnnotationPlotBinding(view, "xaxis2", "upper", scale=frequency_scale),
+            plot_binding=AnnotationPlotBinding(
+                view,
+                "xaxis2",
+                "upper",
+                scale=frequency_scale,
+                selection_policy="box_preferred",
+            ),
         ),
         AnnotationField("comment", "Description / comment", "textarea", required=True),
     )

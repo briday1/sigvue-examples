@@ -12,7 +12,13 @@ from plotly.subplots import make_subplots
 
 from sigvue.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource, TraceStyle
 
-from .capabilities import SigMFExporter, WaterfallSigMFAnnotator, read_sigmf_annotations
+from .capabilities import (
+    SIGNAL_DISCOVERY_COLUMNS,
+    SigMFExporter,
+    WaterfallSigMFAnnotator,
+    read_sigmf_annotations,
+    sigmf_discovery_summary,
+)
 from .sigmf import SigMFRecording, load_metadata, load_recording
 from .style import style_figure
 
@@ -44,6 +50,24 @@ class WaterfallWindow:
         return self.recording.sample_rate
 
 
+def _axis_bounds(values: np.ndarray) -> tuple[float, float]:
+    """Return the outer cell edges for an ordered Plotly heatmap coordinate."""
+    ordered = np.sort(np.asarray(values, dtype=float))
+    if ordered.size < 2:
+        center = float(ordered[0])
+        return center - 0.5, center + 0.5
+    spacing = float(np.median(np.diff(ordered)))
+    return float(ordered[0] - spacing / 2), float(ordered[-1] + spacing / 2)
+
+
+def _cell_edges(centers: np.ndarray, lower: float, upper: float) -> np.ndarray:
+    """Map displayed row centers to contiguous cells spanning the delivered view."""
+    ordered = np.sort(np.asarray(centers, dtype=float))
+    if ordered.size == 1:
+        return np.asarray([lower, upper], dtype=float)
+    return np.concatenate(([lower], (ordered[:-1] + ordered[1:]) / 2, [upper]))
+
+
 def _add_sigmf_annotation_regions(
     figure: go.Figure,
     data: WaterfallWindow,
@@ -65,10 +89,11 @@ def _add_sigmf_annotation_regions(
     displayed_times = np.sort(np.asarray(waterfall_time_ms, dtype=float))
     displayed_time_start_ms = view_start * 1e3
     displayed_time_stop_ms = view_stop * 1e3
-    if displayed_times.size > 1:
-        displayed_time_bin_ms = float(np.median(np.diff(displayed_times)))
-    else:
-        displayed_time_bin_ms = max((view_stop - view_start) * 1e3, 1e-9)
+    displayed_time_edges = _cell_edges(
+        displayed_times,
+        displayed_time_start_ms,
+        displayed_time_stop_ms,
+    )
     polygon_x: list[float | None] = []
     polygon_y: list[float | None] = []
     hover_x: list[float] = []
@@ -97,16 +122,12 @@ def _add_sigmf_annotation_regions(
         )
         exact_start_ms = start_seconds * 1e3
         exact_stop_ms = stop_seconds * 1e3
-        annotation_center_ms = (exact_start_ms + exact_stop_ms) / 2
-        nearest_time_ms = float(displayed_times[np.argmin(np.abs(displayed_times - annotation_center_ms))])
-        visual_start_ms = max(
-            displayed_time_start_ms,
-            min(exact_start_ms, nearest_time_ms - displayed_time_bin_ms / 2),
-        )
-        visual_stop_ms = min(
-            displayed_time_stop_ms,
-            max(exact_stop_ms, nearest_time_ms + displayed_time_bin_ms / 2),
-        )
+        first_bin = int(np.searchsorted(displayed_time_edges, exact_start_ms, side="right") - 1)
+        last_bin = int(np.searchsorted(displayed_time_edges, exact_stop_ms, side="left") - 1)
+        first_bin = min(displayed_times.size - 1, max(0, first_bin))
+        last_bin = min(displayed_times.size - 1, max(first_bin, last_bin))
+        visual_start_ms = min(exact_start_ms, float(displayed_time_edges[first_bin]))
+        visual_stop_ms = max(exact_stop_ms, float(displayed_time_edges[last_bin + 1]))
         x = [visible_lower_hz / 1e6, visible_upper_hz / 1e6] * 2
         x = [x[0], x[1], x[1], x[0], x[0]]
         y = [visual_start_ms, visual_start_ms, visual_stop_ms, visual_stop_ms, visual_start_ms]
@@ -150,13 +171,18 @@ def _describe_recording(metadata_path: Path) -> DataResource:
     metadata = load_metadata(metadata_path)
     global_metadata = metadata["global"]
     channels = int(global_metadata.get("core:num_channels", 1))
+    sample_rate = global_metadata.get("core:sample_rate")
+    subtitle = f"{channels} channel{'s' if channels != 1 else ''}"
+    if sample_rate is not None:
+        subtitle += f" · {float(sample_rate):g} samples/s"
     return DataResource(
         identifier=metadata_path.name.removesuffix(".sigmf-meta"),
         title=str(global_metadata.get("core:description") or metadata_path.stem),
         source=metadata_path,
-        subtitle=f"{channels} channel{'s' if channels != 1 else ''} · {float(global_metadata['core:sample_rate']):g} samples/s",
+        subtitle=subtitle,
         timestamp=datetime.fromtimestamp(metadata_path.stat().st_mtime, tz=timezone.utc),
         tags=("sigmf", str(global_metadata["core:datatype"])),
+        summary=sigmf_discovery_summary(metadata),
     )
 
 
@@ -217,6 +243,7 @@ def analyze_lte(data: WaterfallWindow, ui: AnalysisContext) -> None:
         label="Annotation boxes",
         color="#ffffff",
         width=0.5,
+        opacity=0.6,
         line_style="solid",
         group="Annotation display",
     )
@@ -289,6 +316,11 @@ def analyze_lte(data: WaterfallWindow, ui: AnalysisContext) -> None:
     center_hz = float(captures[0].get("core:frequency", 0.0)) if captures else 0.0
     frequency_mhz = (center_hz + np.fft.fftshift(np.fft.fftfreq(fft_size, 1 / data.sample_rate))) / 1e6
     time_ms = (data.start_sample + starts + fft_size / 2) / data.sample_rate * 1e3
+    frequency_bounds_mhz = _axis_bounds(frequency_mhz)
+    time_bounds_ms = (
+        data.start_sample / data.sample_rate * 1e3,
+        (data.start_sample + samples.size) / data.sample_rate * 1e3,
+    )
 
     figure = make_subplots(
         rows=2,
@@ -319,6 +351,9 @@ def analyze_lte(data: WaterfallWindow, ui: AnalysisContext) -> None:
         title_text="PSD (dBFS)",
         range=[dbfs_min, dbfs_max],
         autorange=False,
+        minallowed=dbfs_min,
+        maxallowed=dbfs_max,
+        autorangeoptions={"clipmin": dbfs_min, "clipmax": dbfs_max},
         tickformat=".1f",
         row=1,
         col=1,
@@ -326,10 +361,20 @@ def analyze_lte(data: WaterfallWindow, ui: AnalysisContext) -> None:
     figure.update_yaxes(
         title_text="Recording time (ms)",
         tickformat="07.2f",
-        range=[data.start_sample / data.sample_rate * 1e3, (data.start_sample + samples.size) / data.sample_rate * 1e3],
+        range=list(time_bounds_ms),
         autorange=False,
+        minallowed=time_bounds_ms[0],
+        maxallowed=time_bounds_ms[1],
+        autorangeoptions={"clipmin": time_bounds_ms[0], "clipmax": time_bounds_ms[1]},
         row=2,
         col=1,
+    )
+    figure.update_xaxes(
+        range=list(frequency_bounds_mhz),
+        autorange=False,
+        minallowed=frequency_bounds_mhz[0],
+        maxallowed=frequency_bounds_mhz[1],
+        autorangeoptions={"clipmin": frequency_bounds_mhz[0], "clipmax": frequency_bounds_mhz[1]},
     )
     figure.update_xaxes(title_text="RF frequency (MHz)", tickformat="07.2f", row=2, col=1)
     figure.update_layout(
@@ -368,6 +413,7 @@ def create_lte_workspace(config=None):
         analyze=analyze_lte,
         category="spectrum monitoring",
         tags=("windowed", "single-channel", "LTE", "spectrogram", "waterfall"),
+        discovery_columns=SIGNAL_DISCOVERY_COLUMNS,
     )
 
 
@@ -411,20 +457,27 @@ def _rfi_spectrogram(
     samples: np.ndarray,
     fft_size: int,
     maximum_rows: int,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     block_count = samples.size // fft_size
     if block_count < 1:
         padded = np.pad(samples, (0, fft_size - samples.size))
         blocks = padded.reshape(1, fft_size)
+        centers = np.asarray([samples.size / 2], dtype=float)
     else:
-        stride = max(1, block_count // maximum_rows)
-        blocks = samples[: block_count * fft_size].reshape(block_count, fft_size)[::stride][:maximum_rows]
+        selected = np.linspace(
+            0,
+            block_count - 1,
+            min(maximum_rows, block_count),
+            dtype=np.int64,
+        )
+        blocks = samples[: block_count * fft_size].reshape(block_count, fft_size)[selected]
+        centers = (selected.astype(float) + 0.5) * fft_size
     window = np.hanning(fft_size)
     spectra = np.fft.fftshift(np.fft.fft(blocks * window, axis=1), axes=1)
     power = (np.abs(spectra) / max(np.sum(window), 1)) ** 2
     power_dbfs = 10 * np.log10(np.maximum(power, 1e-18))
     average_dbfs = 10 * np.log10(np.maximum(np.mean(power, axis=0), 1e-18))
-    return power_dbfs, average_dbfs
+    return power_dbfs, average_dbfs, centers
 
 
 def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
@@ -436,6 +489,7 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
         label="Annotation boxes",
         color="#ffffff",
         width=0.5,
+        opacity=0.6,
         line_style="solid",
         group="Annotation display",
     )
@@ -474,15 +528,17 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
 
     samples = data.samples[0]
     fft_size = min(requested_fft, max(8, samples.size))
-    waterfall_dbfs, average_dbfs = _rfi_spectrogram(samples, fft_size, maximum_rows)
+    waterfall_dbfs, average_dbfs, row_center_samples = _rfi_spectrogram(
+        samples, fft_size, maximum_rows
+    )
     frequency_offset = np.fft.fftshift(np.fft.fftfreq(fft_size, 1 / data.sample_rate))
     captures = data.recording.metadata.get("captures", [{}])
     center_hz = float(captures[0].get("core:frequency", 0.0)) if captures else 0.0
     frequency_mhz = (center_hz + frequency_offset) / 1e6
+    frequency_bounds_mhz = _axis_bounds(frequency_mhz)
     view_start_ms = data.start_sample / data.sample_rate * 1e3
     view_stop_ms = (data.start_sample + data.samples.shape[1]) / data.sample_rate * 1e3
-    time_bin_ms = (view_stop_ms - view_start_ms) / waterfall_dbfs.shape[0]
-    recording_time_ms = view_start_ms + (np.arange(waterfall_dbfs.shape[0]) + 0.5) * time_bin_ms
+    recording_time_ms = (data.start_sample + row_center_samples) / data.sample_rate * 1e3
 
     figure = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.3, 0.7], vertical_spacing=0.06)
     figure.add_trace(
@@ -503,13 +559,32 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
         row=2,
         col=1,
     )
-    figure.update_yaxes(title_text="Power (dBFS)", range=[zmin, zmax], row=1, col=1)
+    figure.update_yaxes(
+        title_text="Power (dBFS)",
+        range=[zmin, zmax],
+        autorange=False,
+        minallowed=zmin,
+        maxallowed=zmax,
+        autorangeoptions={"clipmin": zmin, "clipmax": zmax},
+        row=1,
+        col=1,
+    )
     figure.update_yaxes(
         title_text="Recording time (ms)",
         range=[view_start_ms, view_stop_ms],
         autorange=False,
+        minallowed=view_start_ms,
+        maxallowed=view_stop_ms,
+        autorangeoptions={"clipmin": view_start_ms, "clipmax": view_stop_ms},
         row=2,
         col=1,
+    )
+    figure.update_xaxes(
+        range=list(frequency_bounds_mhz),
+        autorange=False,
+        minallowed=frequency_bounds_mhz[0],
+        maxallowed=frequency_bounds_mhz[1],
+        autorangeoptions={"clipmin": frequency_bounds_mhz[0], "clipmax": frequency_bounds_mhz[1]},
     )
     figure.update_xaxes(title_text="RF frequency (MHz)", row=2, col=1)
     figure.update_layout(
@@ -547,4 +622,5 @@ def create_radio_astronomy_workspace(config=None):
         analyze=analyze_radio_astronomy,
         category="radio astronomy",
         tags=("windowed", "radio astronomy", "rfi", "sigmf", "real data"),
+        discovery_columns=SIGNAL_DISCOVERY_COLUMNS,
     )

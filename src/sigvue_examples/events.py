@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 
 from sigvue.plugin import AnalysisContext, AnalysisWorkspace, DataDelivery, DataResource, DirectorySource, Segment
 
+from .capabilities import SIGNAL_DISCOVERY_COLUMNS
 from .style import COLORS, style_figure
 
 
@@ -97,6 +98,7 @@ def create_workspace(config=None):
         analyze=analyze,
         category="acoustic monitoring",
         tags=("segmented", "irregular events", "precomputed", "display-only"),
+        discovery_columns=SIGNAL_DISCOVERY_COLUMNS,
     )
 
 
@@ -128,4 +130,5 @@ def describe_collection(path: Path) -> DataResource:
         subtitle=f"{len(payload['events'])} precomputed events · {float(payload['duration_seconds']):g} s",
         timestamp=datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc),
         tags=("json", "precomputed", "acoustic events"),
+        summary={"date": None, "sample_rate": None, "rf_frequency": None},
     )

@@ -8,12 +8,23 @@ import unittest
 
 import numpy as np
 
-from sigvue_examples.waterfall import create_radio_astronomy_workspace
+from sigvue_examples.waterfall import _rfi_spectrogram, create_radio_astronomy_workspace
 from scripts.download_radio_astronomy import is_unpacked, md5, unpack
 from scripts.generate_minimal_sigmf import write_sigmf
 
 
 class WaterfallTests(unittest.TestCase):
+    def test_rfi_display_rows_cover_the_entire_selected_buffer(self):
+        waterfall, average, centers = _rfi_spectrogram(
+            np.ones(1_000, dtype=np.complex64),
+            fft_size=10,
+            maximum_rows=30,
+        )
+        self.assertEqual((30, 10), waterfall.shape)
+        self.assertEqual((10,), average.shape)
+        self.assertEqual(5.0, centers[0])
+        self.assertEqual(995.0, centers[-1])
+
     def test_windowed_rfi_workspace_reads_sigmf_and_renders_spectrogram(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -57,6 +68,7 @@ class WaterfallTests(unittest.TestCase):
             self.assertEqual("Annotation display", controls["rfi_annotation_region_color"].group)
             self.assertEqual("#ffffff", controls["rfi_annotation_region_color"].default)
             self.assertEqual(0.5, controls["rfi_annotation_region_width"].default)
+            self.assertEqual(0.6, controls["rfi_annotation_region_opacity"].default)
             self.assertEqual("solid", controls["rfi_annotation_region_line_style"].default)
 
             figure = opened.page.views[0].callback({
@@ -70,10 +82,16 @@ class WaterfallTests(unittest.TestCase):
             self.assertEqual("#00224e", figure.data[1].colorscale[0][1])
             self.assertEqual("RF frequency (MHz)", figure.layout.xaxis2.title.text)
             self.assertEqual("Recording time (ms)", figure.layout.yaxis2.title.text)
+            for axis in (figure.layout.xaxis, figure.layout.xaxis2, figure.layout.yaxis, figure.layout.yaxis2):
+                self.assertIsNot(axis.fixedrange, True)
+                self.assertEqual(float(axis.range[0]), float(axis.minallowed))
+                self.assertEqual(float(axis.range[1]), float(axis.maxallowed))
+                self.assertEqual(float(axis.range[0]), float(axis.autorangeoptions.clipmin))
+                self.assertEqual(float(axis.range[1]), float(axis.autorangeoptions.clipmax))
             region = figure.data[2]
             self.assertFalse(region.showlegend)
             self.assertEqual("skip", region.hoverinfo)
-            self.assertEqual("#ffffff", region.line.color)
+            self.assertEqual("rgba(255,255,255,0.6)", region.line.color)
             self.assertEqual(0.5, region.line.width)
             self.assertEqual("solid", region.line.dash)
             self.assertFalse(figure.layout.shapes)
