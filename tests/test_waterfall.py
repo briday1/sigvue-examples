@@ -8,14 +8,14 @@ import unittest
 
 import numpy as np
 
-from sigvue_examples.waterfall import _rfi_spectrogram, create_radio_astronomy_workspace
+from sigvue_examples.waterfall import _waterfall_spectrogram, create_workspace
 from scripts.download_radio_astronomy import is_unpacked, md5, unpack
 from scripts.generate_minimal_sigmf import write_sigmf
 
 
 class WaterfallTests(unittest.TestCase):
-    def test_rfi_display_rows_cover_the_entire_selected_buffer(self):
-        waterfall, average, centers = _rfi_spectrogram(
+    def test_waterfall_rows_cover_the_entire_selected_buffer(self):
+        waterfall, average, centers = _waterfall_spectrogram(
             np.ones(1_000, dtype=np.complex64),
             fft_size=10,
             maximum_rows=30,
@@ -25,7 +25,7 @@ class WaterfallTests(unittest.TestCase):
         self.assertEqual(5.0, centers[0])
         self.assertEqual(995.0, centers[-1])
 
-    def test_windowed_rfi_workspace_reads_sigmf_and_renders_spectrogram(self):
+    def test_windowed_waterfall_workspace_reads_sigmf_and_renders_spectrogram(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             rng = np.random.default_rng(8242048)
@@ -48,12 +48,12 @@ class WaterfallTests(unittest.TestCase):
             }]
             metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
-            workspace = create_radio_astronomy_workspace({"data_root": root})
+            workspace = create_workspace({"data_root": root})
             self.assertEqual(["survey"], [item.identifier for item in workspace.discover_items()])
             self.assertEqual("survey", workspace.discover_items()[0].title)
             opened = workspace.open_item("survey")
             self.assertEqual(
-                "rfi_annotation_region_color",
+                "waterfall_annotation_region_color",
                 opened.page.annotation.timeline_color_control,
             )
             self.assertEqual("windowed", opened.page.playback.mode)
@@ -61,21 +61,21 @@ class WaterfallTests(unittest.TestCase):
             self.assertEqual("Sampled wideband power (dBFS)", opened.page.playback.overview_label)
             self.assertEqual(400, len(opened.page.playback.overview_values))
             controls = {control.name: control for control in opened.page.controls}
-            self.assertEqual("colormap", controls["rfi_colormap"].control_type)
-            self.assertEqual("limits", controls["rfi_dbfs_limits"].control_type)
-            self.assertEqual("toggle", controls["rfi_show_annotations"].control_type)
-            self.assertTrue(controls["rfi_show_annotations"].default)
-            self.assertEqual("Annotation display", controls["rfi_annotation_region_color"].group)
-            self.assertEqual("#ffffff", controls["rfi_annotation_region_color"].default)
-            self.assertEqual(0.5, controls["rfi_annotation_region_width"].default)
-            self.assertEqual(0.6, controls["rfi_annotation_region_opacity"].default)
-            self.assertEqual("solid", controls["rfi_annotation_region_line_style"].default)
+            self.assertEqual("colormap", controls["waterfall_colormap"].control_type)
+            self.assertEqual("limits", controls["waterfall_dbfs_limits"].control_type)
+            self.assertEqual("toggle", controls["waterfall_show_annotations"].control_type)
+            self.assertTrue(controls["waterfall_show_annotations"].default)
+            self.assertEqual("Annotation display", controls["waterfall_annotation_region_color"].group)
+            self.assertEqual("#ffffff", controls["waterfall_annotation_region_color"].default)
+            self.assertEqual(0.5, controls["waterfall_annotation_region_width"].default)
+            self.assertEqual(0.6, controls["waterfall_annotation_region_opacity"].default)
+            self.assertEqual("solid", controls["waterfall_annotation_region_line_style"].default)
 
             figure = opened.page.views[0].callback({
-                "rfi_colormap": "Cividis",
-                "rfi_dbfs_limits": "-95,-15",
-                "rfi_fft_size": "1024",
-                "rfi_maximum_time_bins": "50",
+                "waterfall_colormap": "Cividis",
+                "waterfall_dbfs_limits": "-95,-15",
+                "waterfall_fft_size": "1024",
+                "waterfall_maximum_time_bins": "50",
             })
             self.assertEqual(["scatter", "heatmap", "scatter", "scatter"], [trace.type for trace in figure.data])
             self.assertEqual((-95.0, -15.0), (figure.data[1].zmin, figure.data[1].zmax))
@@ -109,9 +109,9 @@ class WaterfallTests(unittest.TestCase):
             self.assertEqual(0.01, hit_targets.marker.opacity)
 
             hidden = opened.page.views[0].callback({
-                "rfi_show_annotations": "false",
-                "rfi_fft_size": "1024",
-                "rfi_maximum_time_bins": "50",
+                "waterfall_show_annotations": "false",
+                "waterfall_fft_size": "1024",
+                "waterfall_maximum_time_bins": "50",
             })
             self.assertEqual(["scatter", "heatmap"], [trace.type for trace in hidden.data])
             self.assertFalse(hidden.layout.shapes)

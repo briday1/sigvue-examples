@@ -182,8 +182,8 @@ def create_workspace(config=None):
     values = config or {}
     root = Path(values.get("data_root", Path.cwd() / "data/comms"))
     return AnalysisWorkspace(
-        identifier=str(values.get("id", "digital-comms")),
-        name=str(values.get("name", "Digital Communications")),
+        identifier="digital-comms",
+        name="Digital Communications",
         description="Windowed mode: compare file-backed QPSK and 16-QAM recordings with constellation and eye-diagram views.",
         source=DirectorySource(
             root,

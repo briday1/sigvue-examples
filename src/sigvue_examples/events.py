@@ -85,8 +85,8 @@ def create_workspace(config=None):
     values = config or {}
     root = Path(values.get("data_root", Path.cwd() / "data"))
     return AnalysisWorkspace(
-        identifier=str(values.get("id", "acoustic-events-segmented")),
-        name=str(values.get("name", "Acoustic Event Review")),
+        identifier="acoustic-events-segmented",
+        name="Acoustic Event Review",
         description="Segmented mode: navigate irregular precomputed acoustic events and display stored results without reprocessing raw data.",
         source=DirectorySource(
             root,

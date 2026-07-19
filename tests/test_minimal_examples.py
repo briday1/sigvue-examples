@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from sigvue.web.application import create_app
+from sigvue.profile import load_browser_profile
 
 import sigvue_examples.sigmf as sigmf
 import sigvue_examples.style as style
@@ -54,6 +55,7 @@ class MinimalExampleTests(unittest.TestCase):
         self.assertEqual(
             [
                 "digital-comms",
+                "downloaded-waterfall",
                 "acoustic-events-segmented",
                 "radio-astronomy-rfi",
                 "lte-recordings",
@@ -63,6 +65,7 @@ class MinimalExampleTests(unittest.TestCase):
         )
         expected_mode_tags = {
             "digital-comms": "windowed",
+            "downloaded-waterfall": "windowed",
             "acoustic-events-segmented": "segmented",
             "radio-astronomy-rfi": "windowed",
             "lte-recordings": "windowed",
@@ -71,6 +74,26 @@ class MinimalExampleTests(unittest.TestCase):
         for workspace in app.list_workspaces():
             self.assertIn(expected_mode_tags[workspace["id"]], workspace["tags"])
             self.assertIn(expected_mode_tags[workspace["id"]], workspace["description"].lower())
+
+    def test_same_waterfall_factory_creates_distinct_configured_instances(self):
+        profile = load_browser_profile(ROOT / "browser.toml")
+        waterfall_specs = [
+            spec
+            for spec in profile.workspaces
+            if spec.attribute == "create_workspace" and spec.module_name.endswith(".waterfall")
+        ]
+        self.assertEqual(2, len(waterfall_specs))
+        self.assertEqual(1, len({(spec.module_name, spec.attribute) for spec in waterfall_specs}))
+        self.assertEqual(
+            {"downloaded-waterfall", "radio-astronomy-rfi"},
+            {spec.metadata_overrides["identifier"] for spec in waterfall_specs},
+        )
+
+        app = create_app(config_path=ROOT / "browser.toml")
+        workspaces = {workspace["id"]: workspace for workspace in app.list_workspaces()}
+        self.assertEqual("Downloaded", workspaces["downloaded-waterfall"]["name"])
+        self.assertIn("downloaded", workspaces["downloaded-waterfall"]["tags"])
+        self.assertEqual("radio astronomy", workspaces["radio-astronomy-rfi"]["category"])
 
     def test_communications_recordings_are_file_backed_and_windowed(self):
         app = create_app(config_path=ROOT / "browser.toml")

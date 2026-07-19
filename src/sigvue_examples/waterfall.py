@@ -403,8 +403,8 @@ def create_lte_workspace(config=None):
     root = Path(values.get("data_root", Path.cwd() / "data"))
     filename = str(values.get("filename", "*.sigmf-meta"))
     return AnalysisWorkspace(
-        identifier=str(values.get("id", "lte-recordings")),
-        name=str(values.get("name", "LTE Recordings")),
+        identifier="lte-waterfall",
+        name="LTE Waterfall",
         description="Windowed mode: drag or resize an interval over sliding-median power and inspect its LTE time-frequency plot.",
         source=_recording_source(root, filename, recursive=True),
         delivery=WindowedLteDelivery(),
@@ -417,12 +417,12 @@ def create_lte_workspace(config=None):
     )
 
 
-class WindowedRfiDelivery(DataDelivery[SigMFRecording, WaterfallWindow]):
+class WindowedWaterfallDelivery(DataDelivery[SigMFRecording, WaterfallWindow]):
     """Select a short interval over sparse power samples from a large recording."""
 
     def prepare(self, recording: SigMFRecording, ui: AnalysisContext) -> WaterfallWindow:
         overview = ui.once(
-            f"ata-rfi-overview:{recording.metadata_path}",
+            f"waterfall-power-overview:{recording.metadata_path}",
             lambda: _sparse_power_overview(recording),
         )
         start_seconds, end_seconds = ui.windowed(
@@ -453,7 +453,7 @@ def _sparse_power_overview(
     return values
 
 
-def _rfi_spectrogram(
+def _waterfall_spectrogram(
     samples: np.ndarray,
     fft_size: int,
     maximum_rows: int,
@@ -480,12 +480,12 @@ def _rfi_spectrogram(
     return power_dbfs, average_dbfs, centers
 
 
-def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
+def analyze_waterfall(data: WaterfallWindow, ui: AnalysisContext) -> None:
     show_annotations = ui.toggle(
-        "rfi_show_annotations", default=True, label="Show annotations", group="Annotation display"
+        "waterfall_show_annotations", default=True, label="Show annotations", group="Annotation display"
     )
     annotation_style = ui.trace_style(
-        "rfi_annotation_region",
+        "waterfall_annotation_region",
         label="Annotation boxes",
         color="#ffffff",
         width=0.5,
@@ -494,14 +494,14 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
         group="Annotation display",
     )
     colormap = ui.colormap(
-        "rfi_colormap",
+        "waterfall_colormap",
         label="Colormap",
         default="Plasma",
         options=COLORMAPS,
         group="Spectrogram display",
     )
     zmin, zmax = ui.limits(
-        "rfi_dbfs_limits",
+        "waterfall_dbfs_limits",
         label="dBFS scale",
         default=(-100.0, -20.0),
         minimum=-140.0,
@@ -510,14 +510,14 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
         group="Spectrogram display",
     )
     requested_fft = int(ui.select(
-        "rfi_fft_size",
+        "waterfall_fft_size",
         label="FFT size (samples)",
         default=4096,
         options=(1024, 2048, 4096, 8192, 16384),
         group="Spectrogram processing",
     ))
     maximum_rows = int(ui.number(
-        "rfi_maximum_time_bins",
+        "waterfall_maximum_time_bins",
         label="Maximum time bins",
         default=200,
         minimum=25,
@@ -528,7 +528,7 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
 
     samples = data.samples[0]
     fft_size = min(requested_fft, max(8, samples.size))
-    waterfall_dbfs, average_dbfs, row_center_samples = _rfi_spectrogram(
+    waterfall_dbfs, average_dbfs, row_center_samples = _waterfall_spectrogram(
         samples, fft_size, maximum_rows
     )
     frequency_offset = np.fft.fftshift(np.fft.fftfreq(fft_size, 1 / data.sample_rate))
@@ -588,7 +588,7 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
     )
     figure.update_xaxes(title_text="RF frequency (MHz)", row=2, col=1)
     figure.update_layout(
-        uirevision=f"ata-rfi:{data.recording.metadata_path.name}:annotations-{show_annotations}"
+        uirevision=f"waterfall:{data.recording.metadata_path.name}:annotations-{show_annotations}"
     )
     _add_sigmf_annotation_regions(
         figure,
@@ -604,23 +604,25 @@ def analyze_radio_astronomy(data: WaterfallWindow, ui: AnalysisContext) -> None:
     ui.stat("Center frequency", f"{center_hz / 1e6:g} MHz")
     ui.stat("Sample rate", f"{data.sample_rate / 1e6:g} MS/s")
     ui.stat("Selected duration", f"{samples.size / data.sample_rate * 1e3:g} ms")
-    with ui.tab("RFI spectrum"):
-        ui.plot(style_figure(figure, ui.theme, "Allen Telescope Array RFI survey"), key="rfi-spectrum")
+    with ui.tab("Spectrum + waterfall"):
+        ui.plot(style_figure(figure, ui.theme, "Spectrum and waterfall"), key="waterfall-spectrum")
 
 
-def create_radio_astronomy_workspace(config=None):
+def create_workspace(config=None):
+    """Create one reusable SigMF waterfall analysis instance."""
     values = config or {}
-    root = Path(values.get("data_root", Path.cwd() / "data/radio-astronomy"))
+    root = Path(values.get("data_root", Path.cwd() / "data"))
+    filename = str(values.get("filename", "*.sigmf-meta"))
     return AnalysisWorkspace(
-        identifier=str(values.get("id", "radio-astronomy-rfi")),
-        name=str(values.get("name", "Radio Astronomy RFI Survey")),
-        description="Windowed mode: inspect downloaded Allen Telescope Array site-survey recordings for radio-frequency interference.",
-        source=_recording_source(root, "*.sigmf-meta", recursive=True),
-        delivery=WindowedRfiDelivery(),
-        annotator=WaterfallSigMFAnnotator("rfi-spectrum", "rfi_annotation_region_color"),
+        identifier="waterfall",
+        name="Waterfall",
+        description="Windowed mode: inspect a SigMF recording as an average spectrum and waterfall.",
+        source=_recording_source(root, filename, recursive=True),
+        delivery=WindowedWaterfallDelivery(),
+        annotator=WaterfallSigMFAnnotator("waterfall-spectrum", "waterfall_annotation_region_color"),
         exporter=SigMFExporter(),
-        analyze=analyze_radio_astronomy,
-        category="radio astronomy",
-        tags=("windowed", "radio astronomy", "rfi", "sigmf", "real data"),
+        analyze=analyze_waterfall,
+        category="spectrum monitoring",
+        tags=("windowed", "sigmf", "spectrogram", "waterfall"),
         discovery_columns=SIGNAL_DISCOVERY_COLUMNS,
     )

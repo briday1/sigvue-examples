@@ -13,7 +13,7 @@ dependencies = ["certifi>=2024.2.2", "numpy>=1.24", "plotly>=6.1.1", "scipy>=1.1
 [project.entry-points."sigvue.workspaces"]
 digital-comms = "sigvue_examples.comms:create_workspace"
 acoustic-events-segmented = "sigvue_examples.events:create_workspace"
-radio-astronomy-rfi = "sigvue_examples.waterfall:create_radio_astronomy_workspace"
+waterfall = "sigvue_examples.waterfall:create_workspace"
 lte-recording = "sigvue_examples.waterfall:create_lte_workspace"
 lfm-live = "sigvue_examples.radar_collection:create_workspace"
 

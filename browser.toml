@@ -11,6 +11,18 @@ name = "Digital Communications"
 data_root = "./data/comms"
 
 [[workspaces]]
+use = "waterfall"
+path = "."
+id = "downloaded-waterfall"
+name = "Downloaded"
+description = "Windowed waterfall review of locally downloaded SigMF recordings."
+category = "spectrum monitoring"
+tags = ["windowed", "downloaded", "sigmf", "spectrogram", "waterfall"]
+[workspaces.config]
+data_root = "./data/downloaded"
+filename = "*.sigmf-meta"
+
+[[workspaces]]
 use = "acoustic-events-segmented"
 path = "."
 id = "acoustic-events-segmented"
@@ -19,18 +31,25 @@ name = "Acoustic Event Review"
 data_root = "./data/acoustic-events-segmented"
 
 [[workspaces]]
-use = "radio-astronomy-rfi"
+use = "waterfall"
 path = "."
 id = "radio-astronomy-rfi"
 name = "Radio Astronomy RFI Survey"
+description = "Windowed review of Allen Telescope Array site-survey recordings for radio-frequency interference."
+category = "radio astronomy"
+tags = ["windowed", "radio astronomy", "rfi", "sigmf", "real data", "waterfall"]
 [workspaces.config]
 data_root = "./data/radio-astronomy"
+filename = "*.sigmf-meta"
 
 [[workspaces]]
 use = "lte-recording"
 path = "."
 id = "lte-recordings"
 name = "LTE Recordings"
+description = "Windowed LTE time-frequency analysis over a sliding-median power overview."
+category = "spectrum monitoring"
+tags = ["windowed", "single-channel", "LTE", "sigmf", "spectrogram", "waterfall"]
 [workspaces.config]
 data_root = "./data/lte"
 filename = "*.sigmf-meta"

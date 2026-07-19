@@ -321,8 +321,8 @@ def create_workspace(config=None) -> AnalysisWorkspace:
     values = config or {}
     return create_lfm_workspace(
         Path(values.get("data_root", Path.cwd() / "data/lfm-live")),
-        identifier=str(values.get("id", "lfm-live")),
-        name=str(values.get("name", "LFM Live View")),
+        identifier="lfm-live",
+        name="LFM Live View",
         delivery=BufferedDelivery(),
         description="Choose a 10 MHz single-return or 2 MHz multi-target collection, then follow it live or seek through history using the same buffered calibration analysis.",
         tags=("live", "four-channel", "calibrated", "LFM", "10-mhz", "2-mhz", "multi-target", "waterfall"),
