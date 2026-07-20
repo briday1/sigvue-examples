@@ -43,4 +43,8 @@ jobs:
             tail -200 pytest.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            details=$(tail -c 6000 pytest.log | python -c 'import sys; print(sys.stdin.read().replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))')
+            echo "::error file=pytest.log,line=1::$details"
+          fi
           exit "$status"
