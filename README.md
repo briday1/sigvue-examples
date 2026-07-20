@@ -152,6 +152,7 @@ During development, installation of this repository is optional because `browser
 ## Test
 
 ```bash
+python -m pip install -e ".[test,release]"
 PYTHONPATH=src:../sigvue/src python -m pytest -q tests
 ```
 

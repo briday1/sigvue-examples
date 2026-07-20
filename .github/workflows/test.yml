@@ -27,9 +27,9 @@ jobs:
 
       - name: Install checked-out Sigvue and examples
         run: |
-          python -m pip install --upgrade pip pytest
+          python -m pip install --upgrade pip
           python -m pip install ./.sigvue-framework
-          python -m pip install -e .
+          python -m pip install -e ".[test]"
 
       - name: Generate deterministic test data
         run: |

@@ -4,6 +4,11 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
+    import tomli as tomllib
+
 from sigvue.web.application import create_app
 from sigvue.profile import load_browser_profile
 
@@ -21,6 +26,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MinimalExampleTests(unittest.TestCase):
+    def test_direct_runtime_dependencies_and_test_extra_are_declared(self):
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+        dependencies = tuple(project["dependencies"])
+        for package in ("certifi", "numpy", "plotly", "scipy", "sigvue"):
+            self.assertTrue(
+                any(value.startswith(package) for value in dependencies),
+                f"Missing direct dependency: {package}",
+            )
+        sigvue_requirement = next(value for value in dependencies if value.startswith("sigvue"))
+        self.assertEqual("sigvue>=2026.13", sigvue_requirement)
+        self.assertTrue(any(
+            value.startswith("pytest")
+            for value in project["optional-dependencies"]["test"]
+        ))
+
     def test_compact_lte_generator_writes_both_ci16_recordings(self):
         with TemporaryDirectory() as directory:
             paths = generate_test_lte(Path(directory))

@@ -8,7 +8,17 @@ version = "0.1.0"
 description = "File-backed SigMF examples for Sigvue"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["certifi>=2024.2.2", "numpy>=1.24", "plotly>=6.1.1", "scipy>=1.10", "sigvue>=0.1.0"]
+dependencies = [
+    "certifi>=2024.2.2",
+    "numpy>=1.24",
+    "plotly>=6.1.1",
+    "scipy>=1.10",
+    "sigvue>=2026.13",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "tomli>=2; python_version < '3.11'"]
+release = ["build>=1.2", "twine>=5.0"]
 
 [project.entry-points."sigvue.workspaces"]
 digital-comms = "sigvue_examples.comms.workspace:create_workspace"
