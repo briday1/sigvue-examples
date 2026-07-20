@@ -58,10 +58,17 @@ menu.
 - **Acoustic Event Review** — navigate irregular markers and display waveform and spectrum products already stored in a JSON results file; the workspace performs no raw-audio processing.
 - **Radio Astronomy RFI Survey** — inspect real SigMF recordings from an Allen Telescope Array site survey using a sparse full-record power overview and a windowed spectrum/waterfall view.
 - **LTE Recordings** — choose the 806 MHz downlink or 847 MHz uplink dataset, then drag a window over its sliding-median power overview and inspect the selected time-frequency region.
+- **LTE Recordings · Matplotlib** — run the same window delivery and STFT analysis through a polished, static CPU-rendered Matplotlib spectrum and waterfall with fixed dBFS limits.
 - **LFM Live View** — choose the original 10 MHz single-return collection or a 2 MHz collection with three delayed/Doppler-shifted returns; both use the same live-tail, historical-seek, and calibration interface.
 - **Radar Data · Generic Waterfall** — point the reusable waterfall workspace at those same SigMF collection manifests, then choose any calibration, terminated-noise, or OTA channel from a dropdown without adding radar-specific plotting code.
 
 Every workspace is backed by files, but generated data is not committed.
+
+The interactive Plotly waterfall keeps box selection, zooming, and per-cell hover.
+On machines where large interactive heatmaps are slow—especially browsers using a
+software or limited graphics backend—the Matplotlib workspace is the CPU-rendered
+alternative. It consumes the same full-resolution STFT array without resampling it;
+the tradeoff is a static PNG instead of browser-side hover and zoom.
 
 To generate or download every example dataset in one command, including the
 roughly 3.4 GB radio-astronomy survey and the large LTE recordings, run:

@@ -61,6 +61,7 @@ class MinimalExampleTests(unittest.TestCase):
                 "radio-astronomy-rfi",
                 "lte-recordings",
                 "lfm-live",
+                "lte-matplotlib-waterfall",
                 "radar-waterfall",
             ],
             [workspace["id"] for workspace in app.list_workspaces()],
@@ -72,6 +73,7 @@ class MinimalExampleTests(unittest.TestCase):
             "radio-astronomy-rfi": "windowed",
             "lte-recordings": "windowed",
             "lfm-live": "live",
+            "lte-matplotlib-waterfall": "windowed",
             "radar-waterfall": "windowed",
         }
         for workspace in app.list_workspaces():

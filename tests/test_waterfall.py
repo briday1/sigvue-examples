@@ -10,12 +10,35 @@ import numpy as np
 from sigvue.plugin import AnnotationRequest
 
 from sigvue_examples.waterfall.analysis import _waterfall_spectrogram
+from sigvue_examples.waterfall.matplotlib_workspace import create_workspace as create_matplotlib_workspace
 from sigvue_examples.waterfall.workspace import create_workspace
 from scripts.download_radio_astronomy import is_unpacked, md5, unpack
 from scripts.generate_minimal_sigmf import write_sigmf
 
 
 class WaterfallTests(unittest.TestCase):
+    def test_matplotlib_waterfall_uses_shared_full_precision_analysis(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            samples = np.exp(1j * 2 * np.pi * 12_000 * np.arange(50_000) / 100_000).astype(np.complex64)
+            write_sigmf(root, "matplotlib", samples, 100_000.0, "Matplotlib waterfall fixture")
+            workspace = create_matplotlib_workspace({"data_root": str(root)})
+
+            opened = workspace.open_item("matplotlib")
+            figure = opened.page.views[0].callback({})
+
+            self.assertEqual("Matplotlib PNG", opened.page.statistics["Renderer"])
+            self.assertEqual(3, len(figure.axes))  # spectrum, waterfall, colorbar
+            displayed = np.asarray(figure.axes[1].collections[0].get_array())
+            expected, _, _ = _waterfall_spectrogram(
+                samples[:2000],
+                fft_size=2000,
+                maximum_rows=200,
+                fft_window="Hann",
+                overlap_percent=50,
+            )
+            np.testing.assert_array_equal(expected, displayed)
+
     def test_waterfall_rows_cover_exact_full_fft_windows(self):
         waterfall, average, edges = _waterfall_spectrogram(
             np.ones(1_000, dtype=np.complex64),
@@ -107,7 +130,11 @@ class WaterfallTests(unittest.TestCase):
                 "waterfall_fft_size": "1024",
                 "waterfall_maximum_time_bins": "50",
             })
-            self.assertEqual(["scatter", "heatmap", "scatter", "scatter"], [trace.type for trace in figure.data])
+            self.assertEqual(
+                ["scatter", "heatmap", "scatter", "scatter", "scatter"],
+                [trace.type for trace in figure.data],
+            )
+            self.assertIn("Selection surface", [trace.name for trace in figure.data])
             self.assertEqual((-95.0, -15.0), tuple(figure.layout.yaxis.range))
             self.assertEqual((-95.0, -15.0), (figure.data[1].zmin, figure.data[1].zmax))
             self.assertEqual(figure.data[1].z.shape[0] + 1, len(figure.data[1].y))
@@ -121,7 +148,7 @@ class WaterfallTests(unittest.TestCase):
                 self.assertIsNone(axis.minallowed)
                 self.assertIsNone(axis.maxallowed)
             self.assertEqual("bounded", opened.page.views[0].axis_navigation)
-            region = figure.data[2]
+            region = figure.data[3]
             self.assertFalse(region.showlegend)
             self.assertEqual("skip", region.hoverinfo)
             self.assertEqual("rgba(255,255,255,0.6)", region.line.color)
@@ -136,7 +163,7 @@ class WaterfallTests(unittest.TestCase):
                 float(np.max(y_values) - np.min(y_values)),
                 5.0,
             )
-            hit_targets = figure.data[3]
+            hit_targets = figure.data[4]
             self.assertIn("Imported IQEngine region", hit_targets.text[0])
             self.assertEqual("markers", hit_targets.mode)
             self.assertEqual(0.01, hit_targets.marker.opacity)
@@ -146,7 +173,10 @@ class WaterfallTests(unittest.TestCase):
                 "waterfall_fft_size": "1024",
                 "waterfall_maximum_time_bins": "50",
             })
-            self.assertEqual(["scatter", "heatmap"], [trace.type for trace in hidden.data])
+            self.assertEqual(
+                ["scatter", "heatmap", "scatter"],
+                [trace.type for trace in hidden.data],
+            )
             self.assertFalse(hidden.layout.shapes)
             self.assertEqual(figure.layout.yaxis2.range, hidden.layout.yaxis2.range)
             self.assertNotEqual(figure.layout.uirevision, hidden.layout.uirevision)
@@ -200,7 +230,11 @@ class WaterfallTests(unittest.TestCase):
             self.assertEqual("LTE allocation", created.comment)
             self.assertEqual((created,), tuple(opened.page.annotation.discover_callback()))
             figure = opened.page.views[0].callback({})
-            self.assertEqual(["scatter", "heatmap", "scatter", "scatter"], [trace.type for trace in figure.data])
+            self.assertEqual(
+                ["scatter", "heatmap", "scatter", "scatter", "scatter"],
+                [trace.type for trace in figure.data],
+            )
+            self.assertIn("Selection surface", [trace.name for trace in figure.data])
             self.assertEqual(figure.data[1].z.shape[0] + 1, figure.data[1].y.size)
             self.assertEqual(tuple(figure.layout.yaxis2.range), (figure.data[1].y[0], figure.data[1].y[-1]))
             self.assertIn("LTE allocation", figure.data[-1].text[0])

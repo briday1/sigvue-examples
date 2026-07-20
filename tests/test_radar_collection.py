@@ -279,11 +279,19 @@ class RadarCollectionTests(unittest.TestCase):
             waterfall_switcher.props["options"],
         )
         for trace in changed.figures["waterfall-domain-0"].data:
+            if trace.type != "heatmap":
+                continue
             self.assertEqual((-100.0, -10.0), (trace.zmin, trace.zmax))
             self.assertEqual("#0d0887", trace.colorscale[0][1])
         for trace in changed.figures["waterfall-domain-1"].data:
+            if trace.type != "heatmap":
+                continue
             self.assertEqual((-180.0, -80.0), (trace.zmin, trace.zmax))
             self.assertEqual("#0d0887", trace.colorscale[0][1])
+        self.assertEqual(
+            4,
+            sum(trace.name == "Selection surface" for trace in changed.figures["waterfall-domain-0"].data),
+        )
 
         customized = render_lfm(data, {
             "lfm_waterfall_colormap": "Cividis",
@@ -291,9 +299,13 @@ class RadarCollectionTests(unittest.TestCase):
             "lfm_psd_waterfall_limits": "-175,-95",
         })
         for trace in customized.figures["waterfall-domain-0"].data:
+            if trace.type != "heatmap":
+                continue
             self.assertEqual((-85.0, -15.0), (trace.zmin, trace.zmax))
             self.assertEqual("#00224e", trace.colorscale[0][1])
         for trace in customized.figures["waterfall-domain-1"].data:
+            if trace.type != "heatmap":
+                continue
             self.assertEqual((-175.0, -95.0), (trace.zmin, trace.zmax))
             self.assertEqual("#00224e", trace.colorscale[0][1])
 

@@ -1035,6 +1035,22 @@ def _waterfall_figure(
             row=display_index // 2 + 1 if tiled else 1,
             col=display_index % 2 + 1 if tiled else 1,
         )
+        # Heatmap-only subplots do not advertise Plotly's box-select tool on
+        # every browser. Two invisible selectable points enable rectangular
+        # range selection without changing the rendered waterfall or its data.
+        figure.add_trace(
+            go.Scatter(
+                x=(float(x[0]), float(x[-1])),
+                y=(float(products.slow_time_edges_s[0]), float(products.slow_time_edges_s[-1])),
+                mode="markers",
+                marker={"opacity": 0.0, "size": 1},
+                hoverinfo="skip",
+                showlegend=False,
+                name="Selection surface",
+            ),
+            row=display_index // 2 + 1 if tiled else 1,
+            col=display_index % 2 + 1 if tiled else 1,
+        )
     displayed_slow_times = np.sort(np.asarray(products.slow_time_s, dtype=float))
     slow_time_edges = np.asarray(products.slow_time_edges_s, dtype=float)
     slow_time_start = float(slow_time_edges[0])

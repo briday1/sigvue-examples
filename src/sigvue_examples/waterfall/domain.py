@@ -651,6 +651,19 @@ def _waterfall_channel_figure(
         row=2,
         col=1,
     )
+    figure.add_trace(
+        go.Scatter(
+            x=(float(frequency_mhz[0]), float(frequency_mhz[-1])),
+            y=(float(products.time_edges_ms[0]), float(products.time_edges_ms[-1])),
+            mode="markers",
+            marker={"opacity": 0.0, "size": 1},
+            hoverinfo="skip",
+            showlegend=False,
+            name="Selection surface",
+        ),
+        row=2,
+        col=1,
+    )
     figure.update_yaxes(
         title_text="Power (dBFS)",
         range=[zmin, zmax],
