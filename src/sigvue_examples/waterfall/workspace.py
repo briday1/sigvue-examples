@@ -6,6 +6,7 @@ from sigvue.plugin import Workspace
 
 from ..io.sigmf.capabilities import SIGNAL_DISCOVERY_COLUMNS
 from .analysis import WaterfallAnalysis
+from .batch import WaterfallBatch
 from .capabilities import waterfall_capabilities
 from .delivery import WindowedWaterfallDelivery
 from .plots import WaterfallPresentation
@@ -27,6 +28,7 @@ def create_workspace(config=None) -> Workspace:
         delivery=WindowedWaterfallDelivery(),
         annotator=annotator,
         exporter=exporter,
+        batch=WaterfallBatch(),
         analysis=WaterfallAnalysis(),
         presentation=WaterfallPresentation(),
         category="spectrum monitoring",

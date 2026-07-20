@@ -63,6 +63,20 @@ menu.
 
 Every workspace is backed by files, but generated data is not committed.
 
+The reusable waterfall workspace also demonstrates background batch actions. From
+either its workspace card or discovered-item table, build exact first-2-ms interactive
+waterfall reports without opening a data view, export an item's SigMF metadata, or
+compile all discovered recordings into one downloadable report archive. Yellow and
+green launcher states show running and completed jobs.
+
+The same jobs can be inspected and dispatched from a terminal:
+
+```bash
+sigvue batch --config browser.toml --list
+sigvue batch --config browser.toml \
+  --workspace lte-recordings --action report-all --output reports
+```
+
 The interactive Plotly waterfall keeps box selection, zooming, and per-cell hover.
 Its Details panel exposes independent slow-time and fast-time display-decimation
 controls for reducing browser heatmap load. Decimation is applied only by this

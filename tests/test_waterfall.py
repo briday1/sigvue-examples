@@ -16,6 +16,26 @@ from scripts.generate_minimal_sigmf import write_sigmf
 
 
 class WaterfallTests(unittest.TestCase):
+    def test_waterfall_batch_builds_item_and_workspace_reports(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            samples = np.exp(1j * 2 * np.pi * 12_000 * np.arange(2_000) / 100_000).astype(np.complex64)
+            write_sigmf(root, "batch", samples, 100_000.0, "Batch waterfall fixture")
+            workspace = create_workspace({"data_root": root})
+            item_output = root / "item-output"
+            item_output.mkdir()
+
+            item_result = workspace.run_item_batch("batch", "report", item_output)
+            self.assertEqual("Interactive waterfall report generated", item_result.summary)
+            report = item_result.files[0]
+            self.assertIn("Exact first 2 ms spectrum and waterfall", report.read_text(encoding="utf-8"))
+
+            workspace_output = root / "workspace-output"
+            workspace_output.mkdir()
+            workspace_result = workspace.run_workspace_batch("report-all", workspace_output)
+            self.assertEqual("Generated 1 recording reports", workspace_result.summary)
+            self.assertEqual("waterfall-workspace-report.zip", workspace_result.files[0].name)
+
     def test_waterfall_rows_cover_exact_full_fft_windows(self):
         waterfall, average, edges = _waterfall_spectrogram(
             np.ones(1_000, dtype=np.complex64),
