@@ -1,5 +1,7 @@
 # Sigvue Examples
 
+[![Test examples](https://github.com/briday1/sigvue-examples/actions/workflows/test.yml/badge.svg)](https://github.com/briday1/sigvue-examples/actions/workflows/test.yml)
+
 External, file-backed examples for [Sigvue](https://github.com/briday1/sigvue). This repository deliberately keeps the small examples independent from the browser framework.
 
 Each pipeline is a directory that can be copied as a unit:
