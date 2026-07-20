@@ -10,35 +10,12 @@ import numpy as np
 from sigvue.plugin import AnnotationRequest
 
 from sigvue_examples.waterfall.analysis import _waterfall_spectrogram
-from sigvue_examples.waterfall.matplotlib_workspace import create_workspace as create_matplotlib_workspace
 from sigvue_examples.waterfall.workspace import create_workspace
 from scripts.download_radio_astronomy import is_unpacked, md5, unpack
 from scripts.generate_minimal_sigmf import write_sigmf
 
 
 class WaterfallTests(unittest.TestCase):
-    def test_matplotlib_waterfall_uses_shared_full_precision_analysis(self):
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            samples = np.exp(1j * 2 * np.pi * 12_000 * np.arange(50_000) / 100_000).astype(np.complex64)
-            write_sigmf(root, "matplotlib", samples, 100_000.0, "Matplotlib waterfall fixture")
-            workspace = create_matplotlib_workspace({"data_root": str(root)})
-
-            opened = workspace.open_item("matplotlib")
-            figure = opened.page.views[0].callback({})
-
-            self.assertEqual("Matplotlib PNG", opened.page.statistics["Renderer"])
-            self.assertEqual(3, len(figure.axes))  # spectrum, waterfall, colorbar
-            displayed = np.asarray(figure.axes[1].collections[0].get_array())
-            expected, _, _ = _waterfall_spectrogram(
-                samples[:2000],
-                fft_size=2000,
-                maximum_rows=200,
-                fft_window="Hann",
-                overlap_percent=50,
-            )
-            np.testing.assert_array_equal(expected, displayed)
-
     def test_waterfall_rows_cover_exact_full_fft_windows(self):
         waterfall, average, edges = _waterfall_spectrogram(
             np.ones(1_000, dtype=np.complex64),
@@ -117,6 +94,8 @@ class WaterfallTests(unittest.TestCase):
             self.assertTrue(controls["waterfall_auto_dbfs_scale"].default)
             self.assertEqual("toggle", controls["waterfall_show_annotations"].control_type)
             self.assertTrue(controls["waterfall_show_annotations"].default)
+            self.assertEqual(1, controls["waterfall_slow_time_display_decimation"].default)
+            self.assertEqual(1, controls["waterfall_fast_time_display_decimation"].default)
             self.assertEqual("Annotation display", controls["waterfall_annotation_region_color"].group)
             self.assertEqual("#ffffff", controls["waterfall_annotation_region_color"].default)
             self.assertEqual(0.5, controls["waterfall_annotation_region_width"].default)
@@ -167,6 +146,15 @@ class WaterfallTests(unittest.TestCase):
             self.assertIn("Imported IQEngine region", hit_targets.text[0])
             self.assertEqual("markers", hit_targets.mode)
             self.assertEqual(0.01, hit_targets.marker.opacity)
+
+            decimated = opened.page.views[0].callback({
+                "waterfall_fft_size": "1024",
+                "waterfall_maximum_time_bins": "50",
+                "waterfall_slow_time_display_decimation": "4",
+                "waterfall_fast_time_display_decimation": "8",
+            })
+            np.testing.assert_array_equal(decimated.data[0].y, figure.data[0].y)
+            np.testing.assert_array_equal(decimated.data[1].z, figure.data[1].z[::4, ::8])
 
             hidden = opened.page.views[0].callback({
                 "waterfall_show_annotations": "false",

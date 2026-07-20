@@ -14,7 +14,6 @@ dependencies = ["certifi>=2024.2.2", "numpy>=1.24", "plotly>=6.1.1", "scipy>=1.1
 digital-comms = "sigvue_examples.comms.workspace:create_workspace"
 acoustic-events-segmented = "sigvue_examples.events.workspace:create_workspace"
 waterfall = "sigvue_examples.waterfall.workspace:create_workspace"
-matplotlib-waterfall = "sigvue_examples.waterfall.matplotlib_workspace:create_workspace"
 lfm-live = "sigvue_examples.radar.workspace:create_workspace"
 
 [tool.setuptools]

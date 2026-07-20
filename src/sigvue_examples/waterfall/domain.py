@@ -616,10 +616,22 @@ def _waterfall_channel_figure(
     annotation_style: TraceStyle,
     show_annotations: bool,
     scale_revision: str,
+    slow_time_decimation: int,
+    fast_time_decimation: int,
 ) -> go.Figure:
     data = products.data
     zmin, zmax = limits
     frequency_mhz = products.frequency_mhz
+    # Presentation-only stride decimation: retain exact selected STFT cells and
+    # leave both the analysis products and average spectrum unchanged.
+    row_indices = np.arange(0, products.waterfall_dbfs.shape[0], slow_time_decimation)
+    frequency_indices = np.arange(0, products.waterfall_dbfs.shape[1], fast_time_decimation)
+    displayed_frequency_mhz = frequency_mhz[frequency_indices]
+    displayed_time_edges_ms = np.concatenate((
+        products.time_edges_ms[row_indices],
+        products.time_edges_ms[-1:],
+    ))
+    displayed_waterfall_dbfs = products.waterfall_dbfs[np.ix_(row_indices, frequency_indices)]
     view_start_ms, view_stop_ms = products.time_bounds_ms
     figure = make_subplots(
         rows=2,
@@ -640,9 +652,9 @@ def _waterfall_channel_figure(
     )
     figure.add_trace(
         go.Heatmap(
-            x=frequency_mhz,
-            y=products.time_edges_ms,
-            z=products.waterfall_dbfs,
+            x=displayed_frequency_mhz,
+            y=displayed_time_edges_ms,
+            z=displayed_waterfall_dbfs,
             zmin=zmin,
             zmax=zmax,
             colorscale=colormap,
@@ -761,6 +773,20 @@ def present_waterfall(products: WaterfallProducts, ui: ViewContext) -> None:
         options=COLORMAPS,
         group="Spectrogram display",
     )
+    slow_time_decimation = int(ui.select(
+        "waterfall_slow_time_display_decimation",
+        label="Slow-time display decimation",
+        default=1,
+        options=(1, 2, 4, 8, 16),
+        group="Spectrogram display",
+    ))
+    fast_time_decimation = int(ui.select(
+        "waterfall_fast_time_display_decimation",
+        label="Fast-time display decimation",
+        default=1,
+        options=(1, 2, 4, 8, 16),
+        group="Spectrogram display",
+    ))
     auto_scale = ui.toggle(
         "waterfall_auto_dbfs_scale",
         default=True,
@@ -785,6 +811,8 @@ def present_waterfall(products: WaterfallProducts, ui: ViewContext) -> None:
         f"{zmin:.9g}",
         f"{zmax:.9g}",
         colormap,
+        str(slow_time_decimation),
+        str(fast_time_decimation),
         str(show_annotations),
         annotation_style.color,
         f"{annotation_style.width:.9g}",
@@ -801,6 +829,8 @@ def present_waterfall(products: WaterfallProducts, ui: ViewContext) -> None:
             annotation_style=annotation_style,
             show_annotations=show_annotations,
             scale_revision=scale_revision,
+            slow_time_decimation=slow_time_decimation,
+            fast_time_decimation=fast_time_decimation,
         )
         for channel in products.channels
     }
@@ -808,6 +838,13 @@ def present_waterfall(products: WaterfallProducts, ui: ViewContext) -> None:
     ui.stat("Center frequency", f"{first.center_hz / 1e6:g} MHz")
     ui.stat("Sample rate", f"{first.data.sample_rate / 1e6:g} MS/s")
     ui.stat("Members", len(products.channels))
+    full_cells = sum(channel.waterfall_dbfs.size for channel in products.channels)
+    displayed_cells = sum(
+        ((channel.waterfall_dbfs.shape[0] + slow_time_decimation - 1) // slow_time_decimation)
+        * ((channel.waterfall_dbfs.shape[1] + fast_time_decimation - 1) // fast_time_decimation)
+        for channel in products.channels
+    )
+    ui.stat("Displayed heatmap cells", f"{displayed_cells:,} of {full_cells:,}")
     with ui.tab("Spectrum + waterfall"):
         if len(figures) == 1:
             ui.plot(next(iter(figures.values())), key="waterfall-spectrum", axis_navigation="bounded")

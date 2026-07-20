@@ -63,18 +63,6 @@ name = "LFM Live View"
 data_root = "./data/lfm-live"
 
 [[workspaces]]
-use = "matplotlib-waterfall"
-path = "."
-id = "lte-matplotlib-waterfall"
-name = "LTE Recordings · Matplotlib"
-description = "Windowed static CPU-rendered Matplotlib spectrum and waterfall over the same LTE data and processing pipeline."
-category = "spectrum monitoring"
-tags = ["windowed", "LTE", "sigmf", "waterfall", "matplotlib", "static"]
-[workspaces.config]
-data_root = "./data/lte"
-filename = "*.sigmf-meta"
-
-[[workspaces]]
 use = "waterfall"
 path = "."
 id = "radar-waterfall"
