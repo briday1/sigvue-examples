@@ -31,6 +31,13 @@ jobs:
           python -m pip install ./.sigvue-framework
           python -m pip install -e .
 
+      - name: Generate deterministic test data
+        run: |
+          python scripts/generate_minimal_sigmf.py --output data
+          python scripts/generate_segmented_results.py --output data/acoustic-events-segmented/acoustic-events.json
+          python scripts/generate_lfm_collection.py --output data/lfm-live
+          python scripts/generate_test_lte.py --output data/lte
+
       - name: Run example tests
         shell: bash
         run: |

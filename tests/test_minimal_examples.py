@@ -14,12 +14,25 @@ from sigvue_examples.io.sigmf.recording import load_recording
 from sigvue_examples.waterfall.workspace import create_workspace as create_waterfall_workspace
 from scripts.generate_segmented_results import EVENTS, generate as generate_segmented_results
 from scripts.generate_minimal_sigmf import qam16, qpsk, write_sigmf
+from scripts.generate_test_lte import generate as generate_test_lte
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class MinimalExampleTests(unittest.TestCase):
+    def test_compact_lte_generator_writes_both_ci16_recordings(self):
+        with TemporaryDirectory() as directory:
+            paths = generate_test_lte(Path(directory))
+            self.assertEqual(4, len(paths))
+            metadata_path = next(
+                path for path in paths
+                if path.name.endswith("sigmf-meta") and "downlink" in str(path)
+            )
+            downlink = load_recording(metadata_path)
+            self.assertEqual("ci16_le", downlink.datatype)
+            self.assertEqual(806_000_000.0, downlink.metadata["captures"][0]["core:frequency"])
+
     def test_every_workspace_declares_standard_discovery_columns(self):
         app = create_app(config_path=ROOT / "browser.toml")
         for workspace in app.list_workspaces():
