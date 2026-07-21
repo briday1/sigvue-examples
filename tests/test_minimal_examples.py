@@ -35,7 +35,7 @@ class MinimalExampleTests(unittest.TestCase):
                 f"Missing direct dependency: {package}",
             )
         sigvue_requirement = next(value for value in dependencies if value.startswith("sigvue"))
-        self.assertEqual("sigvue>=2026.13", sigvue_requirement)
+        self.assertEqual("sigvue>=2026.24", sigvue_requirement)
         self.assertTrue(any(
             value.startswith("pytest")
             for value in project["optional-dependencies"]["test"]

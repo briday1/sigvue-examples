@@ -13,7 +13,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from sigvue.plugin import Batch, BatchRequest, BatchResult, CapabilityChoice, DataResource
+from sigvue.plugin import Batch, BatchDestination, BatchRequest, BatchResult, CapabilityChoice, DataResource
 
 from ..io.sigmf.recording import SigMFRecording
 from .domain import GroupedSigMFRecording, _waterfall_spectrogram
@@ -109,6 +109,9 @@ def _write_report(resource: DataResource, recording: Recording, directory: Path)
 class WaterfallBatch(Batch[Recording]):
     """Produce reports from catalog rows without opening interactive item pages."""
 
+    def __init__(self, output_root: Path) -> None:
+        self.output_root = output_root
+
     @property
     def item_actions(self) -> tuple[CapabilityChoice, ...]:
         return (
@@ -119,6 +122,26 @@ class WaterfallBatch(Batch[Recording]):
     @property
     def workspace_actions(self) -> tuple[CapabilityChoice, ...]:
         return (CapabilityChoice("report-all", "Build workspace report"),)
+
+    def item_destination(self, resource: DataResource, request: BatchRequest) -> BatchDestination:
+        directory = self.output_root / "items" / _safe_name(resource.identifier)
+        filename = (
+            f"{_safe_name(resource.identifier)}-waterfall-report.html"
+            if request.action == "report"
+            else f"{_safe_name(resource.identifier)}-metadata.json"
+        )
+        return BatchDestination(directory, (filename,), "Output already generated")
+
+    def workspace_destination(
+        self,
+        resources: tuple[DataResource, ...],
+        request: BatchRequest,
+    ) -> BatchDestination:
+        return BatchDestination(
+            self.output_root / "workspace",
+            ("waterfall-workspace-report.zip",),
+            "Workspace report already generated",
+        )
 
     def run_item(
         self,

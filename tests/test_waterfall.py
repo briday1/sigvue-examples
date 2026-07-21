@@ -21,7 +21,13 @@ class WaterfallTests(unittest.TestCase):
             root = Path(directory)
             samples = np.exp(1j * 2 * np.pi * 12_000 * np.arange(2_000) / 100_000).astype(np.complex64)
             write_sigmf(root, "batch", samples, 100_000.0, "Batch waterfall fixture")
-            workspace = create_workspace({"data_root": root})
+            durable_output = root / "durable-output"
+            workspace = create_workspace({"data_root": root, "output_root": durable_output})
+            item_destination = workspace.item_batch_destination("batch", "report")
+            self.assertEqual(durable_output / "items" / "batch", item_destination.directory)
+            self.assertEqual(("batch-waterfall-report.html",), item_destination.files)
+            workspace_destination = workspace.workspace_batch_destination("report-all")
+            self.assertEqual(durable_output / "workspace", workspace_destination.directory)
             item_output = root / "item-output"
             item_output.mkdir()
 
