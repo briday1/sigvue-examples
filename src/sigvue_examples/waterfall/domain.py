@@ -773,27 +773,25 @@ def present_waterfall(products: WaterfallProducts, ui: ViewContext) -> None:
         options=COLORMAPS,
         group="Spectrogram display",
     )
-    render_width = int(ui.select(
-        "waterfall_render_width",
-        label="Heatmap render width",
-        default=1024,
-        options=(256, 512, 1024, 2048),
-        group="Spectrogram display",
-    ))
-    render_height = int(ui.select(
-        "waterfall_render_height",
-        label="Heatmap render height",
-        default=512,
-        options=(128, 256, 512, 1024),
-        group="Spectrogram display",
-    ))
-    aggregation = str(ui.select(
-        "waterfall_render_aggregation",
-        label="Heatmap aggregation",
-        default="mean",
-        options=("max", "mean", "median"),
-        group="Spectrogram display",
-    ))
+    with ui.details_group("Raster rendering"):
+        render_width = int(ui.select(
+            "waterfall_render_width",
+            label="Heatmap render width",
+            default=1024,
+            options=(256, 512, 1024, 2048),
+        ))
+        render_height = int(ui.select(
+            "waterfall_render_height",
+            label="Heatmap render height",
+            default=512,
+            options=(128, 256, 512, 1024),
+        ))
+        aggregation = str(ui.select(
+            "waterfall_render_aggregation",
+            label="Heatmap aggregation",
+            default="mean",
+            options=("max", "mean", "median"),
+        ))
     auto_scale = ui.toggle(
         "waterfall_auto_dbfs_scale",
         default=True,

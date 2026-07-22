@@ -572,29 +572,27 @@ def present_lfm(results: LfmAnalysisProducts, ui: ViewContext) -> None:
         step=1.0,
         group="Waterfall display",
     )
-    waterfall_render = {
-        "render_width": int(ui.select(
-            "lfm_waterfall_render_width",
-            label="Heatmap render width",
-            default=1024,
-            options=(256, 512, 1024, 2048),
-            group="Waterfall display",
-        )),
-        "render_height": int(ui.select(
-            "lfm_waterfall_render_height",
-            label="Heatmap render height",
-            default=512,
-            options=(128, 256, 512, 1024),
-            group="Waterfall display",
-        )),
-        "render_aggregation": str(ui.select(
-            "lfm_waterfall_render_aggregation",
-            label="Heatmap aggregation",
-            default="mean",
-            options=("max", "mean", "median"),
-            group="Waterfall display",
-        )),
-    }
+    with ui.details_group("Raster rendering"):
+        waterfall_render = {
+            "render_width": int(ui.select(
+                "lfm_waterfall_render_width",
+                label="Heatmap render width",
+                default=1024,
+                options=(256, 512, 1024, 2048),
+            )),
+            "render_height": int(ui.select(
+                "lfm_waterfall_render_height",
+                label="Heatmap render height",
+                default=512,
+                options=(128, 256, 512, 1024),
+            )),
+            "render_aggregation": str(ui.select(
+                "lfm_waterfall_render_aggregation",
+                label="Heatmap aggregation",
+                default="mean",
+                options=("max", "mean", "median"),
+            )),
+        }
 
     with ui.tab("Waterfall"):
         waterfall_views = {

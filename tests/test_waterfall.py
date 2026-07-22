@@ -123,7 +123,7 @@ class WaterfallTests(unittest.TestCase):
             self.assertEqual(1024, controls["waterfall_render_width"].default)
             self.assertEqual(512, controls["waterfall_render_height"].default)
             self.assertEqual("mean", controls["waterfall_render_aggregation"].default)
-            self.assertEqual("Spectrogram display", controls["waterfall_render_width"].group)
+            self.assertEqual("Raster rendering", controls["waterfall_render_width"].group)
             self.assertEqual("Annotation display", controls["waterfall_annotation_region_color"].group)
             self.assertEqual("#ffffff", controls["waterfall_annotation_region_color"].default)
             self.assertEqual(0.5, controls["waterfall_annotation_region_width"].default)

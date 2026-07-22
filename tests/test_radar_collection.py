@@ -310,9 +310,6 @@ class RadarCollectionTests(unittest.TestCase):
                 "lfm_waterfall_colormap",
                 "lfm_time_waterfall_limits",
                 "lfm_psd_waterfall_limits",
-                "lfm_waterfall_render_width",
-                "lfm_waterfall_render_height",
-                "lfm_waterfall_render_aggregation",
             ],
             [control.name for control in waterfall_controls],
         )
@@ -321,6 +318,15 @@ class RadarCollectionTests(unittest.TestCase):
         self.assertEqual("Plasma", waterfall_controls[0].default)
         self.assertEqual((-100.0, -10.0), waterfall_controls[1].default)
         self.assertEqual((-180.0, -80.0), waterfall_controls[2].default)
+        raster_controls = [control for control in changed.controls if control.group == "Raster rendering"]
+        self.assertEqual(
+            [
+                "lfm_waterfall_render_width",
+                "lfm_waterfall_render_height",
+                "lfm_waterfall_render_aggregation",
+            ],
+            [control.name for control in raster_controls],
+        )
         waterfall_switcher = changed.tabs[0].nodes[0]
         self.assertEqual(("Domain", "Channels"), waterfall_switcher.props["labels"])
         self.assertEqual(("buttons", "dropdown"), waterfall_switcher.props["selectors"])

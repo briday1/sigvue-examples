@@ -58,7 +58,7 @@ menu.
 - **Acoustic Event Review** — navigate irregular markers and display waveform and spectrum products already stored in a JSON results file; the workspace performs no raw-audio processing.
 - **Radio Astronomy RFI Survey** — inspect real SigMF recordings from an Allen Telescope Array site survey using a sparse full-record power overview and a windowed spectrum/waterfall view.
 - **LTE Recordings** — choose the 806 MHz downlink or 847 MHz uplink dataset, then drag a window over its sliding-median power overview and inspect the selected time-frequency region.
-- **LFM Live View** — choose the original 10 MHz single-return collection or a 2 MHz collection with three delayed/Doppler-shifted returns; both use the same live-tail, historical-seek, and calibration interface. The Details panel exposes user-controlled waterfall-row, fast-time-point, and frequency-point limits. These limits are applied while analysis products are built, before Plotly figures or JSON payloads exist; lower values make live updates cheaper and may be raised whenever more display resolution is needed.
+- **LFM Live View** — choose the original 10 MHz single-return collection or a 2 MHz collection with three delayed/Doppler-shifted returns; both use the same live-tail, historical-seek, and calibration interface. Analysis stays at full slow-time, fast-time, and frequency resolution while a separate Raster rendering box controls only the browser image resolution and exact block statistic.
 - **Radar Data · Generic Waterfall** — point the reusable waterfall workspace at those same SigMF collection manifests, then choose any calibration, terminated-noise, or OTA channel from a dropdown without adding radar-specific plotting code.
 
 Every workspace is backed by files, but generated data is not committed.
@@ -77,11 +77,12 @@ sigvue batch --config browser.toml \
   --workspace lte-recordings --action report-all --output reports
 ```
 
-The interactive Plotly waterfall keeps box selection, zooming, and per-cell hover.
-Its Details panel exposes independent slow-time and fast-time display-decimation
-controls for reducing browser heatmap load. Decimation is applied only by this
-presentation pipeline after the configured STFT product is calculated; the analysis
-products and the average PSD remain at their original resolution.
+The interactive Plotly waterfall keeps box selection and zooming. Its Details panel
+groups raster width, height, and max/mean/median aggregation in a dedicated settings
+box. Every source cell contributes to the displayed raster; analysis products and the
+average PSD stay at full resolution. When pan or zoom settles, Sigvue requests a new
+raster of the visible source region so detail increases progressively without sending
+the full heatmap matrix to the browser.
 
 To generate or download every example dataset in one command, including the
 roughly 3.4 GB radio-astronomy survey and the large LTE recordings, run:
