@@ -3,6 +3,7 @@
 from sigvue.plugin import Presentation, ViewContext
 
 from ..style import ORANGE, TEAL
+from ..memory import format_bytes
 from .domain import LfmAnalysisProducts
 from .plots import (
     _amplitude_figure, _combined_frequency_figure, _combined_time_figure,
@@ -114,7 +115,7 @@ def present_lfm(results: LfmAnalysisProducts, ui: ViewContext) -> None:
                 **waterfall_render,
             ),
         }
-        for channel in range(4):
+        for channel in range(products.time_waterfall_dbm.shape[0]):
             channel_label = f"Ch{channel + 1}"
             waterfall_views[("Fast-time power", channel_label)] = _waterfall_figure(
                 products,
@@ -220,6 +221,7 @@ def present_lfm(results: LfmAnalysisProducts, ui: ViewContext) -> None:
                 )
 
     ui.stat("Samples delivered", f"{data.ota_counts.shape[1]:,}")
+    ui.stat("Buffer memory", format_bytes(data.ota_counts.nbytes))
     ui.stat("Duration delivered", f"{data.ota_counts.shape[1] / data.sample_rate:g} s")
     ui.stat("Processing PRI", f"{data.pri_samples / data.sample_rate:g} s")
     ui.stat("Sample rate", f"{data.sample_rate / 1e6:g} MHz")
@@ -233,4 +235,3 @@ class LfmPresentation(Presentation[LfmAnalysisProducts]):
 
     def present(self, results: LfmAnalysisProducts, ui: ViewContext) -> None:
         present_lfm(results, ui)
-

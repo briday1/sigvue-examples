@@ -10,10 +10,15 @@ from ..style import ORANGE, heatmap_grid_color, style_plotly
 from .domain import (
     R_OHMS, Calibration, LfmInput, Products, _averaged_psd, _db10, _single_psd,
 )
+from .layout import channel_grid
 from .style import hsv_channel_colors
 
 
 CHANNEL_COLORS = hsv_channel_colors(4)
+
+
+def _channel_colors(channel_count: int) -> tuple[str, ...]:
+    return hsv_channel_colors(channel_count)
 
 
 def _rgba(color: str, alpha: float) -> str:
@@ -54,9 +59,10 @@ def _phase_figure(
     subset = counts[:, :512]
     time_us = np.arange(subset.shape[1]) / sample_rate * 1e6
     aligned = subset * np.exp(-1j * calibration.phase_offsets)[:, None]
-    for channel in range(4):
+    colors = _channel_colors(subset.shape[0])
+    for channel in range(subset.shape[0]):
         name = f"Channel {channel + 1}"
-        line = {"color": CHANNEL_COLORS[channel]}
+        line = {"color": colors[channel]}
         figure.add_trace(go.Scatter(x=time_us, y=np.abs(subset[channel]), name=name, line=line), row=1, col=1)
         figure.add_trace(go.Scatter(x=time_us, y=np.unwrap(np.angle(subset[channel])), name=name, line=line, showlegend=False), row=2, col=1)
         figure.add_trace(go.Scatter(x=time_us, y=np.unwrap(np.angle(aligned[channel])), name=name, line=line, showlegend=False), row=2, col=2)
@@ -84,10 +90,11 @@ def _amplitude_figure(
     )
     subset = channels[:, : min(4096, channels.shape[1])]
     time_us = np.arange(subset.shape[1]) / data.sample_rate * 1e6
-    for channel in range(4):
+    colors = _channel_colors(subset.shape[0])
+    for channel in range(subset.shape[0]):
         power = _db10((np.abs(subset[channel]) ** 2 / (2 * R_OHMS)) / 1e-3)
         frequency, psd = _single_psd(subset[channel], data.sample_rate)
-        line = {"color": CHANNEL_COLORS[channel]}
+        line = {"color": colors[channel]}
         figure.add_trace(go.Scatter(x=time_us, y=power, name=f"Channel {channel + 1}", line=line), row=1, col=1)
         figure.add_trace(go.Scatter(x=frequency, y=psd, name=f"Channel {channel + 1}", line=line, showlegend=False), row=2, col=1)
     figure.add_trace(go.Scatter(x=[time_us[0], time_us[-1]], y=[data.calibration_dbm] * 2, name="Incident power", line={"color": ORANGE, "dash": "dash"}), row=1, col=1)
@@ -116,13 +123,14 @@ def _noise_figure(
     )
     subset = channels[:, : min(4096, channels.shape[1])]
     time_us = np.arange(subset.shape[1]) / data.sample_rate * 1e6
-    for channel in range(4):
+    colors = _channel_colors(subset.shape[0])
+    for channel in range(subset.shape[0]):
         power = _db10((np.abs(subset[channel]) ** 2 / (2 * R_OHMS)) / 1e-3)
         frequency, psd = _averaged_psd(channels[channel], data.sample_rate)
-        line = {"color": CHANNEL_COLORS[channel]}
+        line = {"color": colors[channel]}
         figure.add_trace(go.Scatter(x=time_us, y=power, name=f"Channel {channel + 1}", line=line), row=1, col=1)
         figure.add_trace(go.Scatter(x=frequency, y=psd, name=f"Channel {channel + 1}", line=line, showlegend=False), row=2, col=1)
-    for channel in range(4):
+    for channel in range(subset.shape[0]):
         figure.add_trace(go.Scatter(x=[-data.sample_rate / 2, data.sample_rate / 2], y=[calibration.noise_psd_dbm_hz[channel]] * 2, name=f"Ch {channel + 1} measured floor", line={"dash": "dot"}), row=2, col=1)
     figure.update_xaxes(title_text="Time (us)", row=1, col=1)
     figure.update_xaxes(title_text="Frequency (Hz)", row=2, col=1)
@@ -148,16 +156,19 @@ def _waterfall_figure(
     render_aggregation: str = "mean",
     viewport: dict[str, object] | None = None,
 ) -> go.Figure:
-    channels = tuple(range(4)) if selected_channel is None else (selected_channel,)
+    channel_count = products.time_waterfall_dbm.shape[0]
+    channels = tuple(range(channel_count)) if selected_channel is None else (selected_channel,)
     tiled = selected_channel is None
+    grid = channel_grid(channel_count if tiled else 1)
     figure = make_subplots(
-        rows=2 if tiled else 1,
-        cols=2 if tiled else 1,
+        rows=grid.rows,
+        cols=grid.columns,
         shared_xaxes="all" if tiled else False,
         shared_yaxes="all" if tiled else False,
         subplot_titles=[f"Channel {channel + 1}" for channel in channels],
     )
     for display_index, channel in enumerate(channels):
+        row, col = grid.position(display_index)
         if domain == "time":
             x, z, title = products.fast_time_us, products.time_waterfall_dbm[channel], "Power (dBm)"
         else:
@@ -176,8 +187,8 @@ def _waterfall_figure(
             render_width=render_width,
             render_height=render_height,
             aggregation=render_aggregation,
-            row=display_index // 2 + 1 if tiled else 1,
-            col=display_index % 2 + 1 if tiled else 1,
+            row=row,
+            col=col,
         )
         # Heatmap-only subplots do not advertise Plotly's box-select tool on
         # every browser. Two invisible selectable points enable rectangular
@@ -192,8 +203,8 @@ def _waterfall_figure(
                 showlegend=False,
                 name="Selection surface",
             ),
-            row=display_index // 2 + 1 if tiled else 1,
-            col=display_index % 2 + 1 if tiled else 1,
+            row=row,
+            col=col,
         )
     displayed_slow_times = np.sort(np.asarray(products.slow_time_s, dtype=float))
     slow_time_edges = np.asarray(products.slow_time_edges_s, dtype=float)
@@ -249,8 +260,7 @@ def _waterfall_figure(
             hover_text.extend((hover,) * 3)
         if polygon_x:
             for display_index, channel in enumerate(channels):
-                row = display_index // 2 + 1 if tiled else 1
-                col = display_index % 2 + 1 if tiled else 1
+                row, col = grid.position(display_index)
                 figure.add_trace(
                     go.Scatter(
                         x=polygon_x,
@@ -287,12 +297,13 @@ def _waterfall_figure(
         col=1 if tiled else None,
     )
     if tiled:
-        figure.update_yaxes(
-            range=[slow_time_start, slow_time_stop],
-            autorange=False,
-            uirevision=f"radar-waterfall-time:{slow_time_start:.12g}:{slow_time_stop:.12g}",
-            col=2,
-        )
+        for column in range(2, grid.columns + 1):
+            figure.update_yaxes(
+                range=[slow_time_start, slow_time_stop],
+                autorange=False,
+                uirevision=f"radar-waterfall-time:{slow_time_start:.12g}:{slow_time_stop:.12g}",
+                col=column,
+            )
     figure.update_xaxes(
         range=[x_start, x_stop],
         autorange=False,
@@ -300,7 +311,7 @@ def _waterfall_figure(
     )
     figure.update_xaxes(
         title_text="Fast time (us)" if domain == "time" else "Frequency (Hz)",
-        row=2 if tiled else 1,
+        row=grid.rows,
     )
     styled = style_plotly(
         figure,
@@ -319,14 +330,16 @@ def _time_figure(
     trace_styles: dict[str, TraceStyle],
     theme: str,
 ) -> go.Figure:
+    channel_count = products.time_mean_dbm.shape[0]
+    grid = channel_grid(channel_count)
     figure = make_subplots(
-        rows=2,
-        cols=2,
+        rows=grid.rows,
+        cols=grid.columns,
         shared_xaxes="all",
-        subplot_titles=[f"Channel {channel + 1}" for channel in range(4)],
+        subplot_titles=[f"Channel {channel + 1}" for channel in range(channel_count)],
     )
-    for channel in range(4):
-        row, col = channel // 2 + 1, channel % 2 + 1
+    for channel in range(channel_count):
+        row, col = grid.position(channel)
         x = products.fast_time_us
         traces = (
             (products.time_mean_dbm[channel], "Mean", trace_styles["mean"]),
@@ -348,7 +361,7 @@ def _time_figure(
                 row=row,
                 col=col,
             )
-    figure.update_xaxes(title_text="Fast time (us)", row=2)
+    figure.update_xaxes(title_text="Fast time (us)", row=grid.rows)
     figure.update_yaxes(title_text="Power (dBm)", col=1)
     return style_plotly(figure, title="Fast-time mean and max hold", theme=theme, boxed_axes=True)
 
@@ -381,14 +394,16 @@ def _frequency_figure(
     trace_styles: dict[str, TraceStyle],
     theme: str,
 ) -> go.Figure:
+    channel_count = products.psd_mean_dbm_hz.shape[0]
+    grid = channel_grid(channel_count)
     figure = make_subplots(
-        rows=2,
-        cols=2,
+        rows=grid.rows,
+        cols=grid.columns,
         shared_xaxes="all",
-        subplot_titles=[f"Channel {channel + 1}" for channel in range(4)],
+        subplot_titles=[f"Channel {channel + 1}" for channel in range(channel_count)],
     )
-    for channel in range(4):
-        row, col = channel // 2 + 1, channel % 2 + 1
+    for channel in range(channel_count):
+        row, col = grid.position(channel)
         x = products.frequencies_hz
         traces = (
             (products.psd_mean_dbm_hz[channel], "Average", trace_styles["mean"]),
@@ -410,7 +425,7 @@ def _frequency_figure(
                 row=row,
                 col=col,
             )
-    figure.update_xaxes(title_text="Frequency (Hz)", row=2)
+    figure.update_xaxes(title_text="Frequency (Hz)", row=grid.rows)
     figure.update_yaxes(title_text="PSD (dBm/Hz)", col=1)
     return style_plotly(figure, title="Average and max-hold PSD", theme=theme, boxed_axes=True)
 
@@ -449,7 +464,7 @@ def _combined_channel_figure(
 ) -> go.Figure:
     """Overlay channel results with shared post-calibration references."""
     figure = go.Figure()
-    for channel, color in enumerate(CHANNEL_COLORS):
+    for channel, color in enumerate(_channel_colors(values.shape[0])):
         channel_name = f"Channel {channel + 1}"
         figure.add_trace(
             go.Scatter(

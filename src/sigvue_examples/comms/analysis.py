@@ -46,6 +46,7 @@ def process(window: CommsWindow, settings: None) -> CommsProducts:
         eye_extent,
         window.start_seconds,
         window.duration_seconds,
+        window.samples.nbytes,
     )
 
 

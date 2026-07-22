@@ -19,7 +19,7 @@ from .domain import LfmCollection, LfmInput
 
 
 class LfmAnnotator(Annotator[LfmCollection, LfmInput]):
-    """Store matching standard SigMF annotations on all four OTA members."""
+    """Store matching standard SigMF annotations on every OTA member."""
 
     timeline_color_control = "lfm_annotation_region_color"
 

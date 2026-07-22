@@ -132,6 +132,7 @@ class LfmAnalysisProducts:
 
 
 def process_lfm(data: LfmInput, settings: LfmSettings) -> LfmAnalysisProducts:
+    channel_count = data.ota_counts.shape[0]
     calibration = _calibrate(
         data,
         adc_bits=settings.adc_bits,
@@ -153,7 +154,7 @@ def process_lfm(data: LfmInput, settings: LfmSettings) -> LfmAnalysisProducts:
             "Reference": "Yes" if channel == calibration.phase_reference_channel else "",
             "Phase correction": f"{-calibration.phase_offsets[channel] * 180 / pi:+.2f} deg",
         }
-        for channel in range(4)
+        for channel in range(channel_count)
     ]
     amplitude_rows = [
         {
@@ -161,7 +162,7 @@ def process_lfm(data: LfmInput, settings: LfmSettings) -> LfmAnalysisProducts:
             "Normalization": f"{calibration.amplitude_corrections[channel]:.4f}x",
             "Recorded full-scale power": f"{calibration.full_scale_dbm[channel]:.2f} dBm",
         }
-        for channel in range(4)
+        for channel in range(channel_count)
     ]
     calibrated_full_scale_voltage = (2 ** (settings.adc_bits - 1) - 1) * calibration.reference_volts_per_count
     calibrated_full_scale_dbm = float(_db10((calibrated_full_scale_voltage**2 / (2 * R_OHMS)) / 1e-3))
@@ -179,7 +180,7 @@ def process_lfm(data: LfmInput, settings: LfmSettings) -> LfmAnalysisProducts:
                 f"{calibration.noise_psd_dbm_hz[channel] - settings.reference_noise_psd_dbm_hz:.2f} dB"
             ),
         }
-        for channel in range(4)
+        for channel in range(channel_count)
     ]
     return LfmAnalysisProducts(
         data=data,
@@ -272,10 +273,11 @@ def _products(
     max_fast_time_bins: int | None = None,
     max_frequency_bins: int | None = None,
 ) -> Products:
+    channel_count = channels.shape[0]
     row_count = channels.shape[1] // pri
     if row_count < 1:
         raise ValueError("Delivered data must contain at least one PRI")
-    rows = channels[:, : row_count * pri].reshape(4, row_count, pri)
+    rows = channels[:, : row_count * pri].reshape(channel_count, row_count, pri)
     fast_group_size = 1 if max_fast_time_bins is None else max(1, ceil(pri / max_fast_time_bins))
     displayed_samples = pri // fast_group_size * fast_group_size
     fast_time_start = start % pri
@@ -287,8 +289,8 @@ def _products(
     power = np.abs(rows) ** 2 / (2 * R_OHMS)
     mean_power = np.mean(power, axis=1)[:, :displayed_samples]
     max_power = np.max(power, axis=1)[:, :displayed_samples]
-    time_mean = _db10(mean_power.reshape(4, -1, fast_group_size).mean(axis=2) / 1e-3)
-    time_max = _db10(max_power.reshape(4, -1, fast_group_size).max(axis=2) / 1e-3)
+    time_mean = _db10(mean_power.reshape(channel_count, -1, fast_group_size).mean(axis=2) / 1e-3)
+    time_max = _db10(max_power.reshape(channel_count, -1, fast_group_size).max(axis=2) / 1e-3)
 
     # Transform every sample in each PRI. Truncating the row here makes a
     # shifted pulse disappear from the PSD even though it remains visible in
@@ -301,8 +303,8 @@ def _products(
     full_frequencies = np.fft.fftshift(np.fft.fftfreq(pri, d=1 / rate))
     frequencies = _group_mean(full_frequencies, frequency_group_size)
     frequency_bin_hz = rate / pri
-    psd_sum = np.zeros((4, frequencies.size), dtype=np.float64)
-    psd_max = np.zeros((4, frequencies.size), dtype=np.float64)
+    psd_sum = np.zeros((channel_count, frequencies.size), dtype=np.float64)
+    psd_max = np.zeros((channel_count, frequencies.size), dtype=np.float64)
     time_waterfall = []
     psd_waterfall = []
     slow_time = []
@@ -312,7 +314,7 @@ def _products(
         block = rows[:, first : min(first + group_size, row_count)]
         block_power = np.abs(block) ** 2 / (2 * R_OHMS)
         waterfall_power = np.mean(block_power, axis=1)[:, :displayed_samples]
-        waterfall_power = waterfall_power.reshape(4, -1, fast_group_size).mean(axis=2)
+        waterfall_power = waterfall_power.reshape(channel_count, -1, fast_group_size).mean(axis=2)
         time_waterfall.append(_db10(waterfall_power / 1e-3))
         spectrum = np.fft.fftshift(np.fft.fft(block, axis=2), axes=2)
         full_psd = np.abs(spectrum) ** 2 / pri**2 / (2 * R_OHMS) / frequency_bin_hz

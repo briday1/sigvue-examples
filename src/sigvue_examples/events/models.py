@@ -16,6 +16,14 @@ class StoredEventResults:
     spectrum_frequency: tuple[float, ...]
     spectrum_db: tuple[float, ...]
 
+    @property
+    def buffer_nbytes(self) -> int:
+        """Logical numeric payload delivered to the event analysis."""
+        return 8 * (
+            len(self.waveform_time) + len(self.waveform)
+            + len(self.spectrum_frequency) + len(self.spectrum_db)
+        )
+
 
 @dataclass(frozen=True)
 class AcousticEventCollection:

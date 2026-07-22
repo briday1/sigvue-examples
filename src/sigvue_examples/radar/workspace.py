@@ -26,6 +26,6 @@ def create_workspace(config=None) -> Workspace:
         analysis=LfmAnalysis(),
         presentation=LfmPresentation(),
         category="signal analysis",
-        tags=("live", "four-channel", "calibrated", "LFM", "10-mhz", "2-mhz", "multi-target", "waterfall"),
+        tags=("live", "multi-channel", "calibrated", "LFM", "10-mhz", "2-mhz", "multi-target", "waterfall"),
         discovery_columns=SIGNAL_DISCOVERY_COLUMNS,
     )

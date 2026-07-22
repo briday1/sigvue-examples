@@ -8,12 +8,13 @@ from .domain import (
 
 
 def configure_lfm(data: LfmInput, ui: ParameterContext) -> LfmSettings:
+    channels = tuple(f"Channel {channel + 1}" for channel in range(data.ota_counts.shape[0]))
     phase_reference = str(
         ui.select(
             "phase_reference",
             label="Phase reference",
             default="Channel 1",
-            options=("Channel 1", "Channel 2", "Channel 3", "Channel 4"),
+            options=channels,
             group="Calibration parameters",
         )
     )
@@ -22,7 +23,7 @@ def configure_lfm(data: LfmInput, ui: ParameterContext) -> LfmSettings:
             "amplitude_reference",
             label="Amplitude reference",
             default="Min",
-            options=("Channel 1", "Channel 2", "Channel 3", "Channel 4", "Min"),
+            options=(*channels, "Min"),
             group="Calibration parameters",
         )
     )

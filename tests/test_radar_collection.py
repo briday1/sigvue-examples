@@ -19,7 +19,8 @@ from sigvue_examples.radar.domain import (
 from sigvue_examples.radar.analysis import LfmAnalysis, configure_lfm
 from sigvue_examples.radar.capabilities import LfmExporter
 from sigvue_examples.radar.delivery import BufferedDelivery, WholeFileDelivery
-from sigvue_examples.radar.plots import CHANNEL_COLORS, _linear_average_db
+from sigvue_examples.radar.layout import channel_grid
+from sigvue_examples.radar.plots import CHANNEL_COLORS, _linear_average_db, _waterfall_figure
 from sigvue_examples.radar.presentation import COLORMAPS, LfmPresentation, present_lfm
 from sigvue_examples.radar.workspace import create_workspace as create_live_workspace
 
@@ -33,6 +34,22 @@ def render_lfm(data: LfmInput, values: dict[str, str]) -> AnalysisContext:
 
 
 class RadarCollectionTests(unittest.TestCase):
+    def test_channel_grid_scales_to_sixteen_channels(self):
+        four = channel_grid(4)
+        sixteen = channel_grid(16)
+        self.assertEqual((2, 2), (four.rows, four.columns))
+        self.assertEqual((4, 4), (sixteen.rows, sixteen.columns))
+        self.assertEqual((4, 4), sixteen.position(15))
+
+        channels = np.ones((16, 32), dtype=np.complex64)
+        products = _products(channels, rate=1_024.0, pri=8, start=0)
+        figure = _waterfall_figure(
+            products, "time", "light", "Viridis", (-100.0, 0.0)
+        )
+        self.assertEqual(16, products.time_waterfall_dbm.shape[0])
+        self.assertIsNotNone(figure.layout.xaxis16)
+        self.assertIsNotNone(figure.layout.yaxis16)
+
     def test_live_workspace_uses_shared_buffered_pipeline(self):
         live = create_live_workspace({"data_root": Path("missing")})
         self.assertIsInstance(live.analysis, LfmAnalysis)
@@ -241,6 +258,7 @@ class RadarCollectionTests(unittest.TestCase):
         )
         baseline = render_lfm(data, {"reference_noise_psd_dbm_hz": "-174", "adc_bits": "8"})
         changed = render_lfm(data, {"reference_noise_psd_dbm_hz": "-168.5", "adc_bits": "16"})
+        self.assertRegex(str(changed.statistics["Buffer memory"]), r"^[0-9.]+ [KMGT]?i?B$")
 
         inline = [control for control in changed.controls if control.placement == "inline"]
         self.assertEqual(

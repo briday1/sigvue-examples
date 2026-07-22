@@ -21,11 +21,12 @@ def describe_collection(path: Path) -> DataResource:
             "captures": [],
         }
     )
+    channel_count = sum(1 for value in payload["members"] if value["role"] == "ota")
     return DataResource(
         path.stem,
         payload["collection"]["name"],
         source=path,
-        tags=("sigmf-collection", "ci16", "four-channel"),
+        tags=("sigmf-collection", "ci16", f"{channel_count}-channel"),
         summary={
             **sigmf_discovery_summary(member_metadata),
             "members": "calibration, terminated-noise, ota",
@@ -46,9 +47,15 @@ def read_collection(path: Path) -> LfmCollection:
         raise ValueError(f"Collection must define exactly {sorted(required)}")
     sample_rate = float(payload["collection"]["sample_rate"])
     adc_bits = 16
+    channel_count = len(members["ota"])
+    if channel_count < 1:
+        raise ValueError("Collection must define at least one channel")
+    expected_channels = list(range(1, channel_count + 1))
     for role, records in members.items():
-        if [record.channel for record in records] != [1, 2, 3, 4]:
-            raise ValueError(f"{role} must define channels 1 through 4")
+        if [record.channel for record in records] != expected_channels:
+            raise ValueError(
+                f"{role} must define the same contiguous channels 1 through {channel_count}"
+            )
         for member in records:
             metadata = json.loads(member.metadata_path.read_text(encoding="utf-8"))["global"]
             if metadata.get("core:datatype") != "ci16_le" or int(metadata.get("core:num_channels", 0)) != 1:
