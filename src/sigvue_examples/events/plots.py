@@ -1,13 +1,29 @@
-"""Stored waveform and spectrum presentation contract."""
+"""Pure Plotly figure builders for stored acoustic events."""
 
-from sigvue.plugin import Presentation, ViewContext
+import plotly.graph_objects as go
 
-from .domain import StoredEventResults, present
-
-
-class EventPresentation(Presentation[StoredEventResults]):
-    def present(self, event: StoredEventResults, ui: ViewContext) -> None:
-        present(event, ui)
+from ..style import COLORS
+from .models import StoredEventResults
 
 
-__all__ = ["EventPresentation"]
+def waveform_figure(event: StoredEventResults) -> go.Figure:
+    figure = go.Figure(go.Scatter(
+        x=event.waveform_time, y=event.waveform, mode="lines",
+        line={"color": COLORS[0], "width": 1.5}, showlegend=False,
+    ))
+    figure.update_xaxes(title_text="Time within event (s)", range=[0, event.duration_seconds])
+    figure.update_yaxes(title_text="Stored normalized amplitude", range=[-1.1, 1.1])
+    return figure
+
+
+def spectrum_figure(event: StoredEventResults) -> go.Figure:
+    figure = go.Figure(go.Scatter(
+        x=event.spectrum_frequency, y=event.spectrum_db, mode="lines",
+        line={"color": COLORS[1], "width": 1.5}, showlegend=False,
+    ))
+    figure.update_xaxes(title_text="Frequency (Hz)")
+    figure.update_yaxes(title_text="Stored magnitude (dB)", range=[-80, 5])
+    return figure
+
+
+__all__ = ["spectrum_figure", "waveform_figure"]

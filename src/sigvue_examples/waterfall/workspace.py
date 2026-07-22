@@ -7,7 +7,7 @@ from sigvue.plugin import DiscoveryColumn, Workspace
 from ..io.sigmf.capabilities import WaterfallSigMFAnnotator
 from .analysis import WaterfallAnalysis
 from .delivery import WindowedSamples
-from .plots import WaterfallPresentation
+from .presentation import WaterfallPresentation
 from .source import recording_source
 
 

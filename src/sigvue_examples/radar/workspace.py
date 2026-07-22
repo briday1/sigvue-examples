@@ -8,7 +8,7 @@ from ..io.sigmf.capabilities import SIGNAL_DISCOVERY_COLUMNS
 from .analysis import LfmAnalysis
 from .capabilities import LfmAnnotator, LfmExporter
 from .delivery import BufferedDelivery
-from .plots import LfmPresentation
+from .presentation import LfmPresentation
 from .source import collection_source
 
 

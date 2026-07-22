@@ -7,7 +7,7 @@ from sigvue.plugin import Workspace
 from ..io.sigmf.capabilities import SIGNAL_DISCOVERY_COLUMNS
 from .analysis import EventAnalysis
 from .delivery import StoredEventDelivery
-from .plots import EventPresentation
+from .presentation import EventPresentation
 from .source import event_source
 
 

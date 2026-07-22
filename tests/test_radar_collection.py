@@ -9,23 +9,18 @@ from sigvue.core.plugin import AnalysisContext
 from sigvue.plugin import ExportRequest
 from sigvue.rendering.dispatch import RenderKind, detect_render_kind
 from sigvue_examples.radar.domain import (
-    BufferedDelivery,
-    CHANNEL_COLORS,
-    COLORMAPS,
     CollectionMember,
     LfmCollection,
-    LfmExporter,
     LfmInput,
-    WholeFileDelivery,
     _calibrate,
-    _linear_average_db,
     _products,
-    configure_lfm,
-    present_lfm,
     process_lfm,
 )
-from sigvue_examples.radar.analysis import LfmAnalysis
-from sigvue_examples.radar.plots import LfmPresentation
+from sigvue_examples.radar.analysis import LfmAnalysis, configure_lfm
+from sigvue_examples.radar.capabilities import LfmExporter
+from sigvue_examples.radar.delivery import BufferedDelivery, WholeFileDelivery
+from sigvue_examples.radar.plots import CHANNEL_COLORS, _linear_average_db
+from sigvue_examples.radar.presentation import COLORMAPS, LfmPresentation, present_lfm
 from sigvue_examples.radar.workspace import create_workspace as create_live_workspace
 
 

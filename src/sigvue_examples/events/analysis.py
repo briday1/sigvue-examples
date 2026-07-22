@@ -2,7 +2,12 @@
 
 from sigvue.plugin import Analysis
 
-from .domain import StoredEventResults, process
+from .models import StoredEventResults
+
+
+def process(event: StoredEventResults, settings: None) -> StoredEventResults:
+    """The source already contains post-processed products, so preserve them."""
+    return event
 
 
 class EventAnalysis(Analysis[StoredEventResults, None, StoredEventResults]):

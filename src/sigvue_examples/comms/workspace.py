@@ -7,7 +7,7 @@ from sigvue.plugin import DiscoveryColumn, Workspace
 from ..io.sigmf.capabilities import SigMFAnnotator
 from .analysis import CommsAnalysis
 from .delivery import WindowedCommsDelivery
-from .plots import CommsPresentation
+from .presentation import CommsPresentation
 from .source import recording_source
 
 
