@@ -13,7 +13,7 @@ dependencies = [
     "numpy>=1.24",
     "plotly>=6.1.1",
     "scipy>=1.10",
-    "sigvue>=2026.32",
+    "sigvue>=2026.37",
 ]
 
 [project.optional-dependencies]

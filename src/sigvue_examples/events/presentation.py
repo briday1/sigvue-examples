@@ -15,9 +15,17 @@ def present(event: StoredEventResults, ui: ViewContext) -> None:
     ui.stat("Duration", f"{event.duration_seconds:.3f} s")
     ui.stat("Buffer memory", format_bytes(event.buffer_nbytes))
     with ui.tab("Stored waveform"):
-        ui.plot(style_figure(waveform_figure(event), ui.theme, event.label), key="waveform")
+        ui.plot(
+            lambda: style_figure(waveform_figure(event), ui.theme, event.label),
+            key="waveform",
+        )
     with ui.tab("Stored spectrum"):
-        ui.plot(style_figure(spectrum_figure(event), ui.theme, f"{event.label} spectrum"), key="spectrum")
+        ui.plot(
+            lambda: style_figure(
+                spectrum_figure(event), ui.theme, f"{event.label} spectrum",
+            ),
+            key="spectrum",
+        )
 
 
 class EventPresentation(Presentation[StoredEventResults]):

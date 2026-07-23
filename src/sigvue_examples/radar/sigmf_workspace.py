@@ -31,6 +31,7 @@ def create_workspace(config=None) -> Workspace:
         exporter=LfmExporter(),
         analysis=LfmAnalysis(),
         presentation=LfmPresentation(),
+        lazy_views=True,
         category="signal analysis",
         tags=("live", "multi-channel", "SigMF", "LFM", "capture"),
         discovery_columns=SIGNAL_DISCOVERY_COLUMNS,

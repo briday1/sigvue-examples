@@ -48,11 +48,29 @@ class LfmGeneratorTests(unittest.TestCase):
         self.assertNotIn("members", payload)
 
     def test_generator_exposes_original_and_multi_target_profiles(self):
-        self.assertEqual({"10mhz", "2mhz"}, set(PROFILES))
+        self.assertEqual({"10mhz", "10mhz-16ch", "2mhz"}, set(PROFILES))
         self.assertEqual(10_000_000, PROFILES["10mhz"].sample_rate)
         self.assertEqual(1, len(PROFILES["10mhz"].targets))
+        self.assertEqual(16, PROFILES["10mhz-16ch"].channel_count)
+        self.assertEqual(10_000_000, PROFILES["10mhz-16ch"].sample_rate)
         self.assertEqual(2_000_000, PROFILES["2mhz"].sample_rate)
         self.assertEqual(3, len(PROFILES["2mhz"].targets))
+
+    def test_sixteen_channel_profile_writes_all_role_streams(self):
+        with TemporaryDirectory() as directory, patch(
+            "scripts.generate_lfm_collection.write_member"
+        ) as write_member_mock:
+            path = generate_collection(
+                Path(directory), PROFILES["10mhz-16ch"],
+                noise_figure_db=7.0, seed=1234,
+            )
+            import json
+
+            streams = json.loads(path.read_text(encoding="utf-8"))["collection"]["core:streams"]
+
+        self.assertEqual(48, len(streams))
+        self.assertEqual(48, write_member_mock.call_count)
+        self.assertEqual(set(range(1, 17)), {stream["lfm:channel"] for stream in streams})
 
     def test_noise_scale_encodes_requested_noise_figure(self):
         sample_rate = 2_000_000

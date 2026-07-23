@@ -89,14 +89,15 @@ python scripts/generate_segmented_results.py
 ```
 
 The LFM SigMF workspace reads both field captures and generated calibrated
-collections from `data/lfm-sigmf`. Generate the 10 MHz and 2 MHz multi-target
-collections together with:
+collections from `data/lfm-sigmf`. Generate the four-channel 10 MHz, sixteen-channel
+10 MHz, and four-channel 2 MHz multi-target collections together with:
 
 ```bash
 python scripts/generate_lfm_collection.py
 ```
 
-Pass `--profile 10mhz` or `--profile 2mhz` to generate only one collection.
+Pass `--profile 10mhz`, `--profile 10mhz-16ch`, or `--profile 2mhz` to generate
+only one collection. The sixteen-channel profile is displayed as a 4×4 plot grid.
 The generated manifests use standard SigMF `core:streams` entries plus the
 `lfm` extension metadata needed to identify calibration, terminated-noise, and
 OTA roles.
@@ -139,6 +140,12 @@ sigvue --config browser.toml
 ```
 
 During development, installation of this repository is optional because `browser.toml` points directly at its root. The browser watches the repository and reloads changed workspace code when the page is refreshed.
+
+All included workspaces set `lazy_views=True`, so only the selected tab and
+view-switcher branch is generated. A workspace that should perform its expensive
+open/process work once can omit that option (the eager default) or explicitly set
+`lazy_views=False`; all of its views are then created in the initial request and
+later view selection stays in the browser.
 
 ## Test
 

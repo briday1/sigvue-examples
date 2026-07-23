@@ -22,6 +22,7 @@ def create_workspace(config=None) -> Workspace:
         delivery=StoredEventDelivery(),
         analysis=EventAnalysis(),
         presentation=EventPresentation(),
+        lazy_views=True,
         category="acoustic monitoring",
         tags=("segmented", "irregular events", "precomputed", "display-only"),
         discovery_columns=SIGNAL_DISCOVERY_COLUMNS,

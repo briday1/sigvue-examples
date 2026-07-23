@@ -47,15 +47,29 @@ class RadarCollectionTests(unittest.TestCase):
         self.assertIsInstance(workspace.delivery, BufferedDelivery)
 
     def test_standard_sigmf_collection_adapter_maps_streams_to_lfm_roles(self):
-        root = Path(__file__).resolve().parents[1] / "data" / "lfm-sigmf" / "15_57_39_010560"
-        collection = read_sigmf_collection(root / "raw_data.sigmf-collection")
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            streams = []
+            for role in ("calibration", "terminated-noise", "ota"):
+                for channel in range(1, 17):
+                    name = f"{role}-ch{channel}.sigmf-meta"
+                    (root / name).write_text(json.dumps({"global": {
+                        "core:datatype": "sc16_le", "core:sample_rate": 10_240_000,
+                        "core:num_channels": 1,
+                    }}), encoding="utf-8")
+                    (root / name.replace(".sigmf-meta", ".sigmf-data")).write_bytes(b"\0" * 40)
+                    streams.append({
+                        "name": name, "lfm:role": role, "lfm:channel": channel,
+                    })
+            manifest = root / "raw_data.sigmf-collection"
+            manifest.write_text(json.dumps({"collection": {"core:streams": streams}}), encoding="utf-8")
+            collection = read_sigmf_collection(manifest)
+            sample_count = collection.sample_count("ota")
+
         self.assertEqual(10_240_000.0, collection.sample_rate)
         self.assertEqual(16, len(collection.members["ota"]))
-        self.assertEqual(
-            {"calibration", "terminated-noise", "ota"},
-            set(collection.members),
-        )
-        self.assertEqual(102_400, collection.sample_count("ota"))
+        self.assertEqual({"calibration", "terminated-noise", "ota"}, set(collection.members))
+        self.assertEqual(10, sample_count)
 
     def test_channel_grid_scales_to_sixteen_channels(self):
         four = channel_grid(4)

@@ -16,15 +16,25 @@ def present(products: CommsProducts, ui: ViewContext) -> None:
     ui.stat("Window width", f"{products.duration_seconds * 1e3:.3f} ms")
     ui.stat("Buffer memory", format_bytes(products.buffer_nbytes))
     with ui.tab("Constellation"):
-        ui.plot(style_figure(
-            constellation_figure(products), ui.theme,
-            f"{products.modulation} constellation",
-        ), key="constellation", axis_navigation="bounded")
+        ui.plot(
+            lambda: style_figure(
+                constellation_figure(products),
+                ui.theme,
+                f"{products.modulation} constellation",
+            ),
+            key="constellation",
+            axis_navigation="bounded",
+        )
     with ui.tab("Eye diagram"):
-        ui.plot(style_figure(
-            eye_figure(products), ui.theme,
-            f"{products.modulation} eye diagram",
-        ), key="eye", axis_navigation="bounded")
+        ui.plot(
+            lambda: style_figure(
+                eye_figure(products),
+                ui.theme,
+                f"{products.modulation} eye diagram",
+            ),
+            key="eye",
+            axis_navigation="bounded",
+        )
 
 
 class CommsPresentation(Presentation[CommsProducts]):

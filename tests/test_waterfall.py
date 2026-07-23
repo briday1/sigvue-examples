@@ -2,14 +2,17 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
 import unittest
+from unittest.mock import patch
 
 import numpy as np
+import plotly.graph_objects as go
 
 from scripts.generate_minimal_sigmf import qam16, qpsk, write_sigmf
 from scripts.generate_test_lte import generate as generate_lte
 from sigvue_examples.comms.workspace import create_workspace as create_comms_workspace
 from sigvue_examples.style import heatmap_grid_color
 from sigvue_examples.waterfall.workspace import create_workspace as create_waterfall_workspace
+from sigvue.web.application import SigvueApp
 
 
 class CopyablePipelineTests(unittest.TestCase):
@@ -135,6 +138,57 @@ class CopyablePipelineTests(unittest.TestCase):
             opened = workspace.open_item(workspace.discover_items()[0].identifier)
             self.assertIsNotNone(opened.page.annotation)
             self.assertEqual((), opened.page.annotation.discover_callback())
+
+    def test_lazy_comms_workspace_only_builds_the_selected_tab(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_sigmf(
+                root,
+                "qpsk",
+                qpsk(),
+                100_000.0,
+                "Synthetic QPSK",
+                **{
+                    "examples:symbol_rate": 10_000.0,
+                    "examples:modulation": "QPSK",
+                },
+            )
+            workspace = create_comms_workspace({
+                "data_root": root,
+                "filename": "*.sigmf-meta",
+            })
+            item_id = workspace.discover_items()[0].identifier
+            app = SigvueApp()
+            app.register_workspace(workspace)
+
+            with (
+                patch(
+                    "sigvue_examples.comms.presentation.constellation_figure",
+                    return_value=go.Figure(),
+                ) as constellation,
+                patch(
+                    "sigvue_examples.comms.presentation.eye_figure",
+                    return_value=go.Figure(),
+                ) as eye,
+            ):
+                initial = app.open_item(workspace.metadata.identifier, item_id)
+                switched = app.open_item(
+                    workspace.metadata.identifier,
+                    item_id,
+                    {"__view_selection___tabs": "1"},
+                )
+
+            self.assertTrue(workspace.lazy_views)
+            self.assertEqual(
+                ["constellation"],
+                [view["name"] for view in initial["page"]["rendered_views"]],
+            )
+            self.assertEqual(
+                ["eye"],
+                [view["name"] for view in switched["page"]["rendered_views"]],
+            )
+            constellation.assert_called_once()
+            eye.assert_called_once()
 
 
 if __name__ == "__main__":

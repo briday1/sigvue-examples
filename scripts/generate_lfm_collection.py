@@ -38,6 +38,7 @@ class LfmProfile:
     pulse_width_seconds: float
     sweep_bandwidth_hz: float
     targets: tuple[tuple[float, float, float], ...]
+    channel_count: int = 4
 
 
 PROFILES = {
@@ -50,6 +51,17 @@ PROFILES = {
         50e-6,
         4_000_000.0,
         ((0.0, 1.0, 0.0),),
+    ),
+    "10mhz-16ch": LfmProfile(
+        "10mhz-16ch",
+        "Synthetic 10 MHz sixteen-channel LFM collection",
+        10_000_000,
+        1_000_000.0,
+        1_000.0,
+        50e-6,
+        4_000_000.0,
+        ((0.0, 1.0, 0.0),),
+        16,
     ),
     "2mhz": LfmProfile(
         "2mhz",
@@ -106,7 +118,12 @@ def write_member(
     amplitude = np.sqrt(2 * R_OHMS * 1e-3 * 10 ** (calibration_dbm / 10))
     noise_std = noise_component_std(sample_rate, noise_figure_db)
     generator = np.random.default_rng(seed)
-    phase = (0.0, 0.37, -0.68, 1.04)[channel - 1]
+    calibration_phases = (0.0, 0.37, -0.68, 1.04)
+    phase = (
+        calibration_phases[channel - 1]
+        if channel <= len(calibration_phases)
+        else ((channel - 1) * 0.61803398875 * 2 * pi) % (2 * pi) - pi
+    )
     chunk = 250_000
     with data.open("wb") as stream:
         for start in range(0, count, chunk):
@@ -152,7 +169,7 @@ def generate_collection(root: Path, profile: LfmProfile, noise_figure_db: float,
     for role_index, (role, duration) in enumerate(
         (("calibration", 0.1), ("terminated-noise", 0.1), ("ota", 1.0))
     ):
-        for channel in range(1, 5):
+        for channel in range(1, profile.channel_count + 1):
             write_member(
                 root,
                 role,

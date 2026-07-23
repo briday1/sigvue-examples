@@ -23,7 +23,7 @@ class MinimalExampleTests(unittest.TestCase):
         for package in ("certifi", "numpy", "plotly", "scipy", "sigvue"):
             self.assertTrue(any(value.startswith(package) for value in dependencies))
         self.assertEqual(
-            "sigvue>=2026.32",
+            "sigvue>=2026.37",
             next(value for value in dependencies if value.startswith("sigvue")),
         )
 
@@ -41,6 +41,7 @@ class MinimalExampleTests(unittest.TestCase):
             ],
             identifiers,
         )
+        self.assertTrue(all(workspace.lazy_views for workspace in app.registry.list()))
         profile = load_browser_profile(ROOT / "browser.toml")
         waterfall_specs = [
             spec for spec in profile.workspaces
