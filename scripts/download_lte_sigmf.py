@@ -10,7 +10,7 @@ from sigvue.helpers import RemoteFile, download_file
 
 
 BASE_URL = "http://nas.destevez.net/~daniel/LTE"
-USER_AGENT = "Sigvue-Examples/0.2"
+USER_AGENT = "Sigvue-Examples/0.3"
 LTE_MANIFEST = {
     "lte/downlink": (
         RemoteFile(

@@ -11,6 +11,15 @@ from scripts import download_lte_sigmf, download_radio_astronomy
 
 
 class DownloadScriptTests(unittest.TestCase):
+    def test_get_all_data_includes_ecg_and_weather_downloaders(self):
+        repository = Path(__file__).resolve().parents[1]
+        aggregate = (
+            repository / "scripts/get_all_data.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("download_mit_bih_ecg.py", aggregate)
+        self.assertIn("download_weather_radar.py", aggregate)
+
     def test_lte_manifest_downloads_each_verified_file_to_its_workspace(self):
         with TemporaryDirectory() as directory, patch.object(
             download_lte_sigmf,

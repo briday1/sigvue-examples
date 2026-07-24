@@ -1,2 +1,2 @@
 include browser.toml
-recursive-include scripts *.py *.sh
+recursive-include scripts *.py *.sh *.tsv

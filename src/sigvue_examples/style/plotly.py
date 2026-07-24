@@ -45,6 +45,7 @@ def style_figure(figure: Any, theme: str, title: str) -> Any:
         mirror=True,
         linecolor=grid,
         zeroline=False,
+        automargin=False,
     )
     figure.update_yaxes(
         showgrid=True,
@@ -54,6 +55,7 @@ def style_figure(figure: Any, theme: str, title: str) -> Any:
         mirror=True,
         linecolor=grid,
         zeroline=False,
+        automargin=False,
     )
     return figure
 
@@ -88,6 +90,7 @@ def style_plotly(
         zeroline=False,
         ticks="outside",
         tickcolor=muted,
+        automargin=False,
     )
     figure.update_yaxes(
         showgrid=True,
@@ -99,5 +102,6 @@ def style_plotly(
         zeroline=False,
         ticks="outside",
         tickcolor=muted,
+        automargin=False,
     )
     return figure

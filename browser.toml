@@ -12,6 +12,18 @@ data_root = "./data/comms"
 filename = "*.sigmf-meta"
 
 [[workspaces]]
+use = "mit-bih-ecg"
+path = "."
+id = "mit-bih-ecg"
+name = "Annotated ECG"
+description = "Exact two-lead MIT-BIH ECG samples with cardiologist reference beat annotations."
+category = "physiology"
+tags = ["windowed", "ECG", "annotations", "real data", "WFDB"]
+[workspaces.config]
+data_root = "./data/ecg/mit-bih"
+filename = "*.hea"
+
+[[workspaces]]
 use = "waterfall"
 path = "."
 id = "downloaded-waterfall"
@@ -62,3 +74,14 @@ id = "lfm-sigmf"
 name = "LFM SigMF View"
 [workspaces.config]
 data_root = "./data/lfm-sigmf"
+
+[[workspaces]]
+use = "weather-radar"
+path = "."
+id = "weather-radar"
+name = "Weather Radar"
+description = "Segmented exact NOAA NEXRAD Level III base-reflectivity sequences from multiple radars."
+category = "weather"
+tags = ["NEXRAD", "weather radar", "reflectivity", "real data"]
+[workspaces.config]
+data_root = "./data/weather-radar"

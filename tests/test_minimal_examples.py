@@ -59,11 +59,13 @@ class MinimalExampleTests(unittest.TestCase):
         self.assertEqual(
             [
                 "digital-comms",
+                "mit-bih-ecg",
                 "downloaded-waterfall",
                 "acoustic-events-segmented",
                 "radio-astronomy-rfi",
                 "lte-recordings",
                 "lfm-sigmf",
+                "weather-radar",
             ],
             identifiers,
         )
@@ -76,15 +78,19 @@ class MinimalExampleTests(unittest.TestCase):
         self.assertEqual(3, len(waterfall_specs))
         self.assertEqual(1, len({(spec.module_name, spec.attribute) for spec in waterfall_specs}))
 
-    def test_every_workspace_declares_standard_discovery_columns(self):
+    def test_every_workspace_declares_relevant_discovery_columns(self):
         app = create_app(config_path=ROOT / "browser.toml")
         for workspace in app.list_workspaces():
             listing = app.browse_items(workspace["id"], {})
-            self.assertEqual(
-                ["date", "sample_rate", "rf_frequency"],
-                [column["key"] for column in listing["columns"]],
-                workspace["id"],
-            )
+            keys = [column["key"] for column in listing["columns"]]
+            self.assertTrue(keys, workspace["id"])
+            self.assertEqual(len(keys), len(set(keys)), workspace["id"])
+            if workspace["id"] not in {"mit-bih-ecg", "weather-radar"}:
+                self.assertEqual(
+                    ["date", "sample_rate", "rf_frequency"],
+                    keys,
+                    workspace["id"],
+                )
 
     def test_event_workspace_default_matches_the_generated_data_location(self):
         with TemporaryDirectory() as directory:
@@ -122,6 +128,8 @@ class MinimalExampleTests(unittest.TestCase):
         figure = style.style_figure(go.Figure(), "light", "Example")
         self.assertEqual(style.GRID, figure.layout.xaxis.gridcolor)
         self.assertEqual(0.5, figure.layout.xaxis.gridwidth)
+        self.assertFalse(figure.layout.xaxis.automargin)
+        self.assertFalse(figure.layout.yaxis.automargin)
         self.assertEqual("rgba(96,113,125,0.12)", style.heatmap_grid_color("light"))
         self.assertEqual("rgba(169,189,194,0.13)", style.heatmap_grid_color("dark"))
 

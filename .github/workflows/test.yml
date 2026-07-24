@@ -88,6 +88,7 @@ jobs:
                   if len(PurePosixPath(name).parts) > 1
               }
           required_sdist = {"browser.toml", *expected_scripts}
+          required_sdist.add("scripts/weather_radar_manifest.tsv")
           missing = sorted(required_sdist - sdist_files)
           if missing:
               raise SystemExit(f"sdist is missing: {', '.join(missing)}")
@@ -96,8 +97,12 @@ jobs:
           with zipfile.ZipFile(wheel) as archive:
               wheel_files = set(archive.namelist())
           required_wheel = {
+              "sigvue_examples/ecg/workspace.py",
               "sigvue_examples/plugins/__init__.py",
+              "sigvue_examples/plugins/nexrad/reader.py",
               "sigvue_examples/plugins/sigmf/recording.py",
+              "sigvue_examples/plugins/wfdb/recording.py",
+              "sigvue_examples/weather_radar/workspace.py",
           }
           missing = sorted(required_wheel - wheel_files)
           if missing:

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sigvue-examples"
-version = "0.2.0"
-description = "File-backed SigMF examples for Sigvue"
+version = "0.3.0"
+description = "File-backed scientific workspace examples for Sigvue"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -25,6 +25,8 @@ digital-comms = "sigvue_examples.comms.workspace:create_workspace"
 acoustic-events-segmented = "sigvue_examples.events.workspace:create_workspace"
 waterfall = "sigvue_examples.waterfall.workspace:create_workspace"
 lfm-sigmf = "sigvue_examples.radar.workspace:create_workspace"
+mit-bih-ecg = "sigvue_examples.ecg.workspace:create_workspace"
+weather-radar = "sigvue_examples.weather_radar.workspace:create_workspace"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

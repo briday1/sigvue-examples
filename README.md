@@ -2,7 +2,8 @@
 
 [![Test examples](https://github.com/briday1/sigvue-examples/actions/workflows/test.yml/badge.svg)](https://github.com/briday1/sigvue-examples/actions/workflows/test.yml)
 
-External, file-backed examples for [Sigvue](https://github.com/briday1/sigvue).
+External, file-backed examples for [Sigvue](https://github.com/briday1/sigvue),
+covering signal recordings, annotated physiology, and weather radar.
 The repository keeps domain-specific analysis and presentation code small by
 building on a packaged layer of reusable concrete plugin components.
 
@@ -17,6 +18,8 @@ src/sigvue_examples/
 │   ├── models.py
 │   └── workspace.py
 ├── events/
+├── ecg/
+├── weather_radar/
 ├── waterfall/
 ├── radar/
 │   ├── workspace.py
@@ -32,6 +35,8 @@ src/sigvue_examples/
 │   ├── lifecycle.py
 │   ├── discovery.py
 │   ├── plotly.py
+│   ├── nexrad/
+│   ├── wfdb/
 │   └── sigmf/
 │       ├── recording.py
 │       ├── source.py
@@ -53,8 +58,10 @@ layer without becoming framework internals.
 
 The `sigvue_examples.plugins.sigmf` package supplies drop-in discovery, ranged
 reading, window delivery, power overviews, annotation persistence, JSON/MAT
-export, and fixture writing. The parent `plugins` package supplies callable
-lifecycle adapters, standard signal discovery columns, and exact Plotly
+export, and fixture writing. The sibling WFDB and NEXRAD packages provide the
+same kind of copyable format boundary for annotated physiology and weather-radar
+products. The parent `plugins` package supplies
+callable lifecycle adapters, standard discovery columns, and exact Plotly
 annotation-region rendering.
 
 For example, the communications and waterfall workspaces compose
@@ -85,10 +92,12 @@ If a workspace does not configure a capability, Sigvue omits its menu.
 ## Examples
 
 - **Digital Communications** — choose a synthetic QPSK or 16-QAM SigMF recording, then drag or resize a short interval; both use a constellation tab followed by an eye-diagram tab.
+- **Annotated ECG** — choose among MIT-BIH records 100, 101, 200, and 207, then inspect both native leads alongside cardiologist beat annotations, exact RR intervals, morphology summaries with the arithmetic mean kept above every beat trace, and record metadata.
 - **Acoustic Event Review** — navigate irregular markers and display waveform and spectrum products already stored in a JSON results file; the workspace performs no raw-audio processing.
 - **Radio Astronomy RFI Survey** — inspect real SigMF recordings from an Allen Telescope Array site survey with the same small, reusable windowed waterfall pipeline.
 - **LTE Recordings** — choose the 806 MHz downlink or 847 MHz uplink dataset and inspect a selected interval with the bundled example's average-spectrum and waterfall presentation.
 - **LFM SigMF View** — choose the original 10 MHz single-return collection or a 2 MHz collection with three delayed/Doppler-shifted returns; both use the same live-tail, historical-seek, and calibration interface. Analysis stays at full slow-time, fast-time, and frequency resolution while a separate Raster rendering box controls only the browser image resolution and exact block statistic.
+- **Weather Radar** — choose the TLX or FDR radar and step through 141 real NOAA NEXRAD Level III super-resolution base-reflectivity scans spanning a dense two-hour storm window using segmented previous/next time navigation. The plan-position display offers a visual eleven-option colormap picker—including the custom NEXRAD scale—alongside a native-gate distribution summary and exact product metadata.
 
 Every workspace is backed by files, but generated data is not committed.
 
@@ -125,6 +134,33 @@ Generate only the compact recordings and precomputed acoustic results with:
 python scripts/generate_comms.py
 python scripts/generate_segmented_results.py
 ```
+
+Download the ECG and dense two-hour weather-radar collections—about 58 MB
+combined—with:
+
+```bash
+python scripts/download_mit_bih_ecg.py
+python scripts/download_weather_radar.py
+```
+
+The ECG downloader pins records 100, 101, 200, and 207 from the
+[MIT-BIH Arrhythmia Database](https://physionet.org/content/mitdb/1.0.0/)
+and verifies every header, two-lead format-212 waveform, and reference
+annotation file. Pass `--records 100 200` to download only a subset. The
+dataset is distributed under the Open Data Commons Attribution License; cite
+PhysioNet and DOI
+[10.13026/C2F305](https://doi.org/10.13026/C2F305).
+
+The weather-radar downloader pins every available TLX and FDR N0B
+base-reflectivity scan from 03:00 through 04:59 UTC on 2024-05-20: 72 TLX
+scans and 69 FDR scans. Eight concurrent downloads keep the 141-file
+collection quick to materialize, while the bundled SHA-256 manifest verifies
+every file from the
+[NOAA NEXRAD Open Data archive](https://registry.opendata.aws/noaa-nexrad/).
+Pass `--radars TLX` or `--radars FDR` to download only one sequence.
+Use `--workers 1` for sequential downloading.
+NOAA data disseminated through NODD is open to public use, with attribution
+requested.
 
 The LFM SigMF workspace reads both field captures and generated calibrated
 collections from `data/lfm-sigmf`. Generate the four-channel 10 MHz, sixteen-channel

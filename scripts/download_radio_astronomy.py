@@ -21,7 +21,7 @@ TLS_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 
 def record_files() -> list[RemoteFile]:
-    request = Request(RECORD_API, headers={"User-Agent": "Sigvue-Examples/0.1"})
+    request = Request(RECORD_API, headers={"User-Agent": "Sigvue-Examples/0.3"})
     with urlopen(request, context=TLS_CONTEXT) as response:
         payload = json.load(response)
     return sorted(
@@ -84,7 +84,7 @@ def main() -> None:
         archive = download_file(
             remote,
             args.output,
-            user_agent="Sigvue-Examples/0.2",
+            user_agent="Sigvue-Examples/0.3",
             chunk_bytes=CHUNK_BYTES,
             progress=_progress(remote.filename),
             tls_context=TLS_CONTEXT,
